@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -127,7 +128,7 @@ fun TimerScreen(
                     (size.height - diameter) / 2f
                 )
 
-                // 运动手表的背景暗轨（精细半透明暗环）
+                // 原生运动表盘半透底环
                 drawArc(
                     color = Color.White.copy(alpha = 0.08f),
                     startAngle = 0f,
@@ -196,9 +197,9 @@ fun TimerScreen(
         // 操作反馈浮层
         if (effectiveFeedback != null) {
             val titleText = when (effectiveFeedback.type) {
-                FeedbackType.ERROR -> "提醒受阻"
-                FeedbackType.SUCCESS -> "操作成功"
-                FeedbackType.INFO -> "系统提示"
+                FeedbackType.ERROR -> "NOTICE"
+                FeedbackType.SUCCESS -> "SUCCESS"
+                FeedbackType.INFO -> "INFO"
             }
             val titleColor = when (effectiveFeedback.type) {
                 FeedbackType.ERROR -> WarningRed
@@ -209,7 +210,7 @@ fun TimerScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.90f))
+                    .background(Color.Black.copy(alpha = 0.92f))
                     .padding(20.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -219,9 +220,10 @@ fun TimerScreen(
                 ) {
                     Text(
                         text = titleText,
-                        style = MaterialTheme.typography.titleMedium,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Black,
                         color = titleColor,
-                        fontWeight = FontWeight.Bold
+                        letterSpacing = 1.sp
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
@@ -268,7 +270,7 @@ fun TimerScreen(
                             )
                         ) {
                             Text(
-                                text = "知道了",
+                                text = "好",
                                 style = MaterialTheme.typography.labelSmall
                             )
                         }
@@ -291,8 +293,8 @@ fun TimerScreen(
 }
 
 /**
- * 待机准备状态：Apple/Samsung 运动极简美学
- * 顶部精致胶囊配置 -> 中间大卡片启动按键 -> 底部设置入口
+ * 待机准备状态（方向 1：极致国际化极简）：
+ * 顶部纯净大预设时长标签 (60 MIN · REST 5M) -> 黄金比例主圆形按键 -> 底部设置按键
  */
 @Composable
 private fun StoppedView(
@@ -308,30 +310,37 @@ private fun StoppedView(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // 顶部小胶囊徽章：点击也可以直达设置调整
-        Box(
+        // 顶部预设：极简排版，大写字重，Apple Watch 经典气质
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.White.copy(alpha = 0.10f))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onOpenSettings
                 )
-                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .padding(top = 2.dp)
         ) {
             Text(
-                text = "${workMin}m 工作 · ${breakMin}m 休息",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = TextSecondary
+                text = "$workMin MIN",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Black,
+                color = TextPrimary,
+                letterSpacing = 1.2.sp
+            )
+            Text(
+                text = "REST ${breakMin}M",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextMuted,
+                letterSpacing = 1.sp
             )
         }
 
-        // 中间主视觉：标志性的大圆形启动按键，带有微发光与极简 Play 符号
+        // 中间主视觉：纯粹大圆环启动器
         Box(
             modifier = Modifier
-                .size(80.dp)
+                .size(76.dp)
                 .clip(CircleShape)
                 .background(
                     Brush.radialGradient(
@@ -350,33 +359,33 @@ private fun StoppedView(
         ) {
             Icon(
                 imageVector = Icons.Default.PlayArrow,
-                contentDescription = "开始",
+                contentDescription = "Start",
                 tint = DarkBackground,
-                modifier = Modifier.size(44.dp)
+                modifier = Modifier.size(42.dp)
             )
         }
 
-        // 底部微型设置按钮
+        // 底部设置按钮
         IconButton(
             onClick = onOpenSettings,
-            modifier = Modifier.size(34.dp),
+            modifier = Modifier.size(32.dp),
             colors = IconButtonDefaults.iconButtonColors(
-                containerColor = Color.White.copy(alpha = 0.10f),
+                containerColor = Color.White.copy(alpha = 0.08f),
                 contentColor = TextSecondary
             )
         ) {
             Icon(
                 imageVector = Icons.Default.Settings,
-                contentDescription = "设置",
-                modifier = Modifier.size(17.dp)
+                contentDescription = "Settings",
+                modifier = Modifier.size(16.dp)
             )
         }
     }
 }
 
 /**
- * 运行中状态：
- * 顶部阶段与轮次药丸胶囊 -> 中心 44sp 极粗大数字时间 -> 底部双圆形微型控制键（暂停 / 停止）
+ * 运行中状态（方向 1）：
+ * 顶部大写状态词 FOCUS / BREAK -> 中心超大等宽时间 -> 底部辅助 ROUND 1 + 纯图标控制
  */
 @Composable
 private fun RunningView(
@@ -388,8 +397,7 @@ private fun RunningView(
     onAskStop: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
-    val phaseLabel = if (phase == TimerPhase.WORK) "专注中" else "休息放松"
-    val phaseDotColor = if (phase == TimerPhase.WORK) WorkBluePrimary else BreakGreenPrimary
+    val phaseTag = if (phase == TimerPhase.WORK) "FOCUS" else "REST"
 
     Column(
         modifier = Modifier
@@ -398,51 +406,46 @@ private fun RunningView(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // 顶部阶段药丸标签
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(14.dp))
-                .background(activeColor.copy(alpha = 0.16f))
-                .padding(horizontal = 10.dp, vertical = 3.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(phaseDotColor)
-                )
-                Spacer(modifier = Modifier.width(5.dp))
-                Text(
-                    text = "$phaseLabel · 第 $round 轮",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = activeColor
-                )
-            }
-        }
-
-        // 中心超大倒计时
+        // 顶部阶段指示：大写英文字符，质感高级
         Text(
-            text = timeString,
-            fontSize = 44.sp,
+            text = phaseTag,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Black,
-            color = TextPrimary,
-            letterSpacing = (-1.5).sp,
-            modifier = Modifier.padding(bottom = 2.dp)
+            color = activeColor,
+            letterSpacing = 2.5.sp,
+            modifier = Modifier.padding(top = 4.dp)
         )
 
-        // 底部双控制操作：圆形图标按钮，极具质感
+        // 中心超大时间 + 轮次小标
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = timeString,
+                fontSize = 46.sp,
+                fontWeight = FontWeight.Black,
+                fontFamily = FontFamily.Monospace,
+                color = TextPrimary,
+                letterSpacing = (-1.5).sp
+            )
+            Text(
+                text = "ROUND $round",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextMuted,
+                letterSpacing = 1.2.sp
+            )
+        }
+
+        // 底部双圆形控制键
         Row(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 暂停按钮
+            // 暂停
             Box(
                 modifier = Modifier
-                    .size(46.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
                     .background(activeColor)
                     .clickable(
@@ -454,16 +457,16 @@ private fun RunningView(
             ) {
                 Icon(
                     imageVector = Icons.Default.Pause,
-                    contentDescription = "暂停",
+                    contentDescription = "Pause",
                     tint = DarkBackground,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
 
-            // 停止按钮
+            // 停止
             Box(
                 modifier = Modifier
-                    .size(46.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
                     .background(Color.White.copy(alpha = 0.12f))
                     .clickable(
@@ -475,9 +478,9 @@ private fun RunningView(
             ) {
                 Icon(
                     imageVector = Icons.Default.Stop,
-                    contentDescription = "停止",
+                    contentDescription = "Stop",
                     tint = WarningRed,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
@@ -485,8 +488,7 @@ private fun RunningView(
 }
 
 /**
- * 暂停状态：
- * 柔和色调 + 呼吸感
+ * 暂停状态（方向 1）
  */
 @Composable
 private fun PausedView(
@@ -497,7 +499,7 @@ private fun PausedView(
     onAskStop: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
-    val pausedLabel = if (phase == TimerPhase.WORK) "专注已暂停" else "休息已暂停"
+    val phaseTag = if (phase == TimerPhase.WORK) "FOCUS PAUSED" else "REST PAUSED"
 
     Column(
         modifier = Modifier
@@ -506,40 +508,46 @@ private fun PausedView(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // 顶部已暂停药丸标签
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color.White.copy(alpha = 0.10f))
-                .padding(horizontal = 10.dp, vertical = 3.dp)
+        // 顶部状态
+        Text(
+            text = phaseTag,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = PauseGray,
+            letterSpacing = 2.sp,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+
+        // 中心超大时间
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "$pausedLabel · 第 $round 轮",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                color = PauseGray
+                text = timeString,
+                fontSize = 46.sp,
+                fontWeight = FontWeight.Black,
+                fontFamily = FontFamily.Monospace,
+                color = TextPrimary.copy(alpha = 0.70f),
+                letterSpacing = (-1.5).sp
+            )
+            Text(
+                text = "ROUND $round",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextMuted.copy(alpha = 0.70f),
+                letterSpacing = 1.2.sp
             )
         }
-
-        // 中心超大倒计时 (半透白，视觉呈暂停状态)
-        Text(
-            text = timeString,
-            fontSize = 44.sp,
-            fontWeight = FontWeight.Black,
-            color = TextPrimary.copy(alpha = 0.75f),
-            letterSpacing = (-1.5).sp,
-            modifier = Modifier.padding(bottom = 2.dp)
-        )
 
         // 底部双控制操作
         Row(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 继续运行按钮
+            // 继续
             Box(
                 modifier = Modifier
-                    .size(46.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
                     .background(WorkBluePrimary)
                     .clickable(
@@ -551,16 +559,16 @@ private fun PausedView(
             ) {
                 Icon(
                     imageVector = Icons.Default.PlayArrow,
-                    contentDescription = "继续",
+                    contentDescription = "Resume",
                     tint = DarkBackground,
-                    modifier = Modifier.size(26.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             }
 
-            // 停止按钮
+            // 停止
             Box(
                 modifier = Modifier
-                    .size(46.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
                     .background(Color.White.copy(alpha = 0.12f))
                     .clickable(
@@ -572,9 +580,9 @@ private fun PausedView(
             ) {
                 Icon(
                     imageVector = Icons.Default.Stop,
-                    contentDescription = "停止",
+                    contentDescription = "Stop",
                     tint = WarningRed,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
@@ -596,10 +604,11 @@ private fun ErrorView(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "状态异常",
-            style = MaterialTheme.typography.titleMedium,
+            text = "ERROR",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Black,
             color = WarningRed,
-            fontWeight = FontWeight.Bold
+            letterSpacing = 1.5.sp
         )
 
         Spacer(modifier = Modifier.height(4.dp))
@@ -629,7 +638,7 @@ private fun ErrorView(
                 )
             ) {
                 Text(
-                    text = "重试",
+                    text = "RETRY",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold
                 )
@@ -646,7 +655,7 @@ private fun ErrorView(
                 )
             ) {
                 Text(
-                    text = "重置",
+                    text = "RESET",
                     style = MaterialTheme.typography.labelSmall
                 )
             }
@@ -671,16 +680,17 @@ private fun StopConfirmOverlay(
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                text = "结束计时",
-                style = MaterialTheme.typography.titleMedium,
+                text = "END SESSION",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Black,
                 color = WarningRed,
-                fontWeight = FontWeight.Bold
+                letterSpacing = 1.5.sp
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "确定要提前结束当前轮次吗？",
+                text = "End the current timer?",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary,
                 textAlign = TextAlign.Center
@@ -703,7 +713,7 @@ private fun StopConfirmOverlay(
                     )
                 ) {
                     Text(
-                        text = "继续",
+                        text = "NO",
                         style = MaterialTheme.typography.labelSmall
                     )
                 }
@@ -719,7 +729,7 @@ private fun StopConfirmOverlay(
                     )
                 ) {
                     Text(
-                        text = "结束",
+                        text = "YES",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold
                     )
