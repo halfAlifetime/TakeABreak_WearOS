@@ -1,8 +1,12 @@
 package com.takeabreak.wearos.ui
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +19,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,9 +32,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -35,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.FilledTonalButton
+import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.IconButton
 import androidx.wear.compose.material3.IconButtonDefaults
 import androidx.wear.compose.material3.MaterialTheme
@@ -43,14 +56,13 @@ import com.takeabreak.wearos.permission.SettingTarget
 import com.takeabreak.wearos.timer.TimerPhase
 import com.takeabreak.wearos.timer.TimerState
 import com.takeabreak.wearos.timer.TimerStatus
-import com.takeabreak.wearos.ui.theme.BreakGreenContainer
 import com.takeabreak.wearos.ui.theme.BreakGreenPrimary
 import com.takeabreak.wearos.ui.theme.DarkBackground
 import com.takeabreak.wearos.ui.theme.PauseGray
+import com.takeabreak.wearos.ui.theme.TextMuted
 import com.takeabreak.wearos.ui.theme.TextPrimary
 import com.takeabreak.wearos.ui.theme.TextSecondary
 import com.takeabreak.wearos.ui.theme.WarningRed
-import com.takeabreak.wearos.ui.theme.WorkBlueContainer
 import com.takeabreak.wearos.ui.theme.WorkBluePrimary
 
 @Composable
@@ -71,7 +83,6 @@ fun TimerScreen(
 ) {
     var showStopConfirmDialog by remember { mutableStateOf(false) }
 
-    // 优先采用统一结构化的 feedback，同时兼容单一 actionMessage
     val effectiveFeedback = feedback ?: actionMessage?.let { msg ->
         val type = when {
             msg.contains("成功") || msg.contains("已重新恢复") -> FeedbackType.SUCCESS
@@ -90,6 +101,7 @@ fun TimerScreen(
     val rawProgress = state.calculateProgress(tickElapsed)
     val animatedProgress by animateFloatAsState(
         targetValue = rawProgress,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
         label = "circular_progress"
     )
 
@@ -108,26 +120,25 @@ fun TimerScreen(
             .fillMaxSize()
             .background(DarkBackground)
             .drawBehind {
+                val strokeWidth = 8.dp.toPx()
+                val diameter = size.minDimension - strokeWidth * 2 - 10.dp.toPx()
+                val topLeft = Offset(
+                    (size.width - diameter) / 2f,
+                    (size.height - diameter) / 2f
+                )
+
+                // 运动手表的背景暗轨（精细半透明暗环）
+                drawArc(
+                    color = Color.White.copy(alpha = 0.08f),
+                    startAngle = 0f,
+                    sweepAngle = 360f,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = Size(diameter, diameter),
+                    style = Stroke(width = strokeWidth)
+                )
+
                 if (state.status == TimerStatus.RUNNING || state.status == TimerStatus.PAUSED) {
-                    val strokeWidth = 5.dp.toPx()
-                    val diameter = size.minDimension - strokeWidth * 2 - 8.dp.toPx()
-                    val topLeft = Offset(
-                        (size.width - diameter) / 2f,
-                        (size.height - diameter) / 2f
-                    )
-
-                    // 背景暗轨
-                    drawArc(
-                        color = Color.White.copy(alpha = 0.12f),
-                        startAngle = 0f,
-                        sweepAngle = 360f,
-                        useCenter = false,
-                        topLeft = topLeft,
-                        size = Size(diameter, diameter),
-                        style = Stroke(width = strokeWidth)
-                    )
-
-                    // 剩余进度环 (从满环顺时针减少)
                     val sweep = 360f * animatedProgress
                     drawArc(
                         color = activeColor,
@@ -158,15 +169,18 @@ fun TimerScreen(
                     timeString = timeString,
                     activeColor = activeColor,
                     onPause = onPause,
-                    onAskStop = { showStopConfirmDialog = true }
+                    onAskStop = { showStopConfirmDialog = true },
+                    onOpenSettings = onOpenSettings
                 )
             }
             TimerStatus.PAUSED -> {
                 PausedView(
                     phase = state.phase,
+                    round = state.currentRound,
                     timeString = timeString,
                     onResume = onResume,
-                    onAskStop = { showStopConfirmDialog = true }
+                    onAskStop = { showStopConfirmDialog = true },
+                    onOpenSettings = onOpenSettings
                 )
             }
             TimerStatus.ERROR -> {
@@ -179,7 +193,7 @@ fun TimerScreen(
             }
         }
 
-        // 浮层显示操作反馈与直达设置入口（统一提醒能力检查与操作反馈）
+        // 操作反馈浮层
         if (effectiveFeedback != null) {
             val titleText = when (effectiveFeedback.type) {
                 FeedbackType.ERROR -> "提醒受阻"
@@ -195,8 +209,8 @@ fun TimerScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.88f))
-                    .padding(16.dp),
+                    .background(Color.Black.copy(alpha = 0.90f))
+                    .padding(20.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Column(
@@ -209,7 +223,7 @@ fun TimerScreen(
                         color = titleColor,
                         fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = effectiveFeedback.message,
                         style = MaterialTheme.typography.bodySmall,
@@ -217,7 +231,7 @@ fun TimerScreen(
                         textAlign = TextAlign.Center,
                         maxLines = 3
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
                     Row(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
@@ -229,7 +243,7 @@ fun TimerScreen(
                                     onClearActionMessage()
                                 },
                                 modifier = Modifier
-                                    .height(34.dp)
+                                    .height(36.dp)
                                     .padding(horizontal = 4.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = WorkBluePrimary,
@@ -246,10 +260,10 @@ fun TimerScreen(
                         FilledTonalButton(
                             onClick = onClearActionMessage,
                             modifier = Modifier
-                                .height(34.dp)
+                                .height(36.dp)
                                 .padding(horizontal = 4.dp),
                             colors = ButtonDefaults.filledTonalButtonColors(
-                                containerColor = Color.White.copy(alpha = 0.15f),
+                                containerColor = Color.White.copy(alpha = 0.16f),
                                 contentColor = TextPrimary
                             )
                         ) {
@@ -263,7 +277,7 @@ fun TimerScreen(
             }
         }
 
-        // 停止确认弹窗（手表上防止误触，所有停止入口共用此统一确认流程）
+        // 停止确认弹窗
         if (showStopConfirmDialog) {
             StopConfirmOverlay(
                 onConfirm = {
@@ -276,6 +290,10 @@ fun TimerScreen(
     }
 }
 
+/**
+ * 待机准备状态：Apple/Samsung 运动极简美学
+ * 顶部精致胶囊配置 -> 中间大卡片启动按键 -> 底部设置入口
+ */
 @Composable
 private fun StoppedView(
     workMin: Int,
@@ -286,64 +304,80 @@ private fun StoppedView(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 24.dp, vertical = 18.dp),
+            .padding(horizontal = 16.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(
-            text = "休息一下",
-            style = MaterialTheme.typography.titleLarge,
-            color = TextPrimary,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Text(
-            text = "工作 ${workMin}m · 休息 ${breakMin}m",
-            style = MaterialTheme.typography.labelSmall,
-            color = TextSecondary
-        )
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        Button(
-            onClick = onStart,
+        // 顶部小胶囊徽章：点击也可以直达设置调整
+        Box(
             modifier = Modifier
-                .fillMaxWidth(0.72f)
-                .height(46.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = WorkBluePrimary,
-                contentColor = DarkBackground
-            )
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color.White.copy(alpha = 0.10f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onOpenSettings
+                )
+                .padding(horizontal = 12.dp, vertical = 4.dp)
         ) {
             Text(
-                text = "开始",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                text = "${workMin}m 工作 · ${breakMin}m 休息",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TextSecondary
             )
         }
 
-        Spacer(modifier = Modifier.height(6.dp))
-
-        FilledTonalButton(
-            onClick = onOpenSettings,
+        // 中间主视觉：标志性的大圆形启动按键，带有微发光与极简 Play 符号
+        Box(
             modifier = Modifier
-                .fillMaxWidth(0.56f)
-                .height(34.dp),
-            colors = ButtonDefaults.filledTonalButtonColors(
-                containerColor = Color.White.copy(alpha = 0.15f),
-                contentColor = TextPrimary
+                .size(80.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            WorkBluePrimary,
+                            WorkBluePrimary.copy(alpha = 0.85f)
+                        )
+                    )
+                )
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onStart
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.PlayArrow,
+                contentDescription = "开始",
+                tint = DarkBackground,
+                modifier = Modifier.size(44.dp)
+            )
+        }
+
+        // 底部微型设置按钮
+        IconButton(
+            onClick = onOpenSettings,
+            modifier = Modifier.size(34.dp),
+            colors = IconButtonDefaults.iconButtonColors(
+                containerColor = Color.White.copy(alpha = 0.10f),
+                contentColor = TextSecondary
             )
         ) {
-            Text(
-                text = "设置",
-                style = MaterialTheme.typography.labelSmall
+            Icon(
+                imageVector = Icons.Default.Settings,
+                contentDescription = "设置",
+                modifier = Modifier.size(17.dp)
             )
         }
     }
 }
 
+/**
+ * 运行中状态：
+ * 顶部阶段与轮次药丸胶囊 -> 中心 44sp 极粗大数字时间 -> 底部双圆形微型控制键（暂停 / 停止）
+ */
 @Composable
 private fun RunningView(
     phase: TimerPhase,
@@ -351,151 +385,196 @@ private fun RunningView(
     timeString: String,
     activeColor: Color,
     onPause: () -> Unit,
-    onAskStop: () -> Unit
+    onAskStop: () -> Unit,
+    onOpenSettings: () -> Unit
 ) {
-    val phaseLabel = if (phase == TimerPhase.WORK) "工作中" else "休息中"
+    val phaseLabel = if (phase == TimerPhase.WORK) "专注中" else "休息放松"
+    val phaseDotColor = if (phase == TimerPhase.WORK) WorkBluePrimary else BreakGreenPrimary
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 18.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(
-            text = "$phaseLabel · 第 $round 轮",
-            style = MaterialTheme.typography.labelSmall,
-            color = activeColor,
-            fontWeight = FontWeight.SemiBold
-        )
+        // 顶部阶段药丸标签
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(14.dp))
+                .background(activeColor.copy(alpha = 0.16f))
+                .padding(horizontal = 10.dp, vertical = 3.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(phaseDotColor)
+                )
+                Spacer(modifier = Modifier.width(5.dp))
+                Text(
+                    text = "$phaseLabel · 第 $round 轮",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = activeColor
+                )
+            }
+        }
 
-        Spacer(modifier = Modifier.height(2.dp))
-
+        // 中心超大倒计时
         Text(
             text = timeString,
-            fontSize = 40.sp,
-            fontWeight = FontWeight.Bold,
+            fontSize = 44.sp,
+            fontWeight = FontWeight.Black,
             color = TextPrimary,
-            letterSpacing = (-1).sp
+            letterSpacing = (-1.5).sp,
+            modifier = Modifier.padding(bottom = 2.dp)
         )
 
-        Spacer(modifier = Modifier.height(10.dp))
-
+        // 底部双控制操作：圆形图标按钮，极具质感
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Button(
-                onClick = onPause,
+            // 暂停按钮
+            Box(
                 modifier = Modifier
-                    .width(76.dp)
-                    .height(38.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = activeColor,
-                    contentColor = DarkBackground
-                )
+                    .size(46.dp)
+                    .clip(CircleShape)
+                    .background(activeColor)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onPause
+                    ),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "暂停",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold
+                Icon(
+                    imageVector = Icons.Default.Pause,
+                    contentDescription = "暂停",
+                    tint = DarkBackground,
+                    modifier = Modifier.size(24.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
-
-            FilledTonalButton(
-                onClick = onAskStop,
+            // 停止按钮
+            Box(
                 modifier = Modifier
-                    .width(62.dp)
-                    .height(38.dp),
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = Color.White.copy(alpha = 0.12f),
-                    contentColor = TextSecondary
-                )
+                    .size(46.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.12f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onAskStop
+                    ),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "停止",
-                    style = MaterialTheme.typography.labelSmall
+                Icon(
+                    imageVector = Icons.Default.Stop,
+                    contentDescription = "停止",
+                    tint = WarningRed,
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }
     }
 }
 
+/**
+ * 暂停状态：
+ * 柔和色调 + 呼吸感
+ */
 @Composable
 private fun PausedView(
     phase: TimerPhase,
+    round: Int,
     timeString: String,
     onResume: () -> Unit,
-    onAskStop: () -> Unit
+    onAskStop: () -> Unit,
+    onOpenSettings: () -> Unit
 ) {
-    val pausedLabel = if (phase == TimerPhase.WORK) "工作已暂停" else "休息已暂停"
+    val pausedLabel = if (phase == TimerPhase.WORK) "专注已暂停" else "休息已暂停"
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 18.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(
-            text = pausedLabel,
-            style = MaterialTheme.typography.labelSmall,
-            color = PauseGray,
-            fontWeight = FontWeight.Medium
-        )
+        // 顶部已暂停药丸标签
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color.White.copy(alpha = 0.10f))
+                .padding(horizontal = 10.dp, vertical = 3.dp)
+        ) {
+            Text(
+                text = "$pausedLabel · 第 $round 轮",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = PauseGray
+            )
+        }
 
-        Spacer(modifier = Modifier.height(2.dp))
-
+        // 中心超大倒计时 (半透白，视觉呈暂停状态)
         Text(
             text = timeString,
-            fontSize = 40.sp,
-            fontWeight = FontWeight.Bold,
-            color = TextPrimary.copy(alpha = 0.85f),
-            letterSpacing = (-1).sp
+            fontSize = 44.sp,
+            fontWeight = FontWeight.Black,
+            color = TextPrimary.copy(alpha = 0.75f),
+            letterSpacing = (-1.5).sp,
+            modifier = Modifier.padding(bottom = 2.dp)
         )
 
-        Spacer(modifier = Modifier.height(10.dp))
-
+        // 底部双控制操作
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Button(
-                onClick = onResume,
+            // 继续运行按钮
+            Box(
                 modifier = Modifier
-                    .width(76.dp)
-                    .height(38.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = WorkBluePrimary,
-                    contentColor = DarkBackground
-                )
+                    .size(46.dp)
+                    .clip(CircleShape)
+                    .background(WorkBluePrimary)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onResume
+                    ),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "继续",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = "继续",
+                    tint = DarkBackground,
+                    modifier = Modifier.size(26.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
-
-            FilledTonalButton(
-                onClick = onAskStop,
+            // 停止按钮
+            Box(
                 modifier = Modifier
-                    .width(62.dp)
-                    .height(38.dp),
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = Color.White.copy(alpha = 0.12f),
-                    contentColor = TextSecondary
-                )
+                    .size(46.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.12f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onAskStop
+                    ),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "停止",
-                    style = MaterialTheme.typography.labelSmall
+                Icon(
+                    imageVector = Icons.Default.Stop,
+                    contentDescription = "停止",
+                    tint = WarningRed,
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }
@@ -512,12 +591,12 @@ private fun ErrorView(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 14.dp),
+            .padding(horizontal = 20.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "计时已暂停",
+            text = "状态异常",
             style = MaterialTheme.typography.titleMedium,
             color = WarningRed,
             fontWeight = FontWeight.Bold
@@ -527,60 +606,50 @@ private fun ErrorView(
 
         Text(
             text = errorMessage,
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.bodySmall,
             color = TextSecondary,
             textAlign = TextAlign.Center,
             maxLines = 2
         )
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Button(
                 onClick = onRetry,
                 modifier = Modifier
-                    .width(68.dp)
-                    .height(34.dp),
+                    .width(74.dp)
+                    .height(36.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = WorkBluePrimary,
                     contentColor = DarkBackground
                 )
             ) {
-                Text(text = "重试", style = MaterialTheme.typography.labelSmall)
+                Text(
+                    text = "重试",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold
+                )
             }
-
-            Spacer(modifier = Modifier.width(6.dp))
 
             FilledTonalButton(
-                onClick = onOpenSettings,
+                onClick = onAskStop,
                 modifier = Modifier
-                    .width(68.dp)
-                    .height(34.dp),
+                    .width(62.dp)
+                    .height(36.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = Color.White.copy(alpha = 0.15f),
-                    contentColor = TextPrimary
+                    contentColor = WarningRed
                 )
             ) {
-                Text(text = "去设置", style = MaterialTheme.typography.labelSmall)
+                Text(
+                    text = "重置",
+                    style = MaterialTheme.typography.labelSmall
+                )
             }
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        FilledTonalButton(
-            onClick = onAskStop,
-            modifier = Modifier
-                .width(142.dp)
-                .height(28.dp),
-            colors = ButtonDefaults.filledTonalButtonColors(
-                containerColor = Color.White.copy(alpha = 0.08f),
-                contentColor = TextSecondary
-            )
-        ) {
-            Text(text = "停止并重置", fontSize = 11.sp)
         }
     }
 }
@@ -594,7 +663,7 @@ private fun StopConfirmOverlay(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.92f))
-            .padding(20.dp),
+            .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -602,17 +671,17 @@ private fun StopConfirmOverlay(
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                text = "确定停止计时？",
+                text = "结束计时",
                 style = MaterialTheme.typography.titleMedium,
-                color = TextPrimary,
+                color = WarningRed,
                 fontWeight = FontWeight.Bold
             )
 
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
-                text = "将取消提醒并重置轮数",
-                style = MaterialTheme.typography.labelSmall,
+                text = "确定要提前结束当前轮次吗？",
+                style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary,
                 textAlign = TextAlign.Center
             )
@@ -620,34 +689,40 @@ private fun StopConfirmOverlay(
             Spacer(modifier = Modifier.height(14.dp))
 
             Row(
-                horizontalArrangement = Arrangement.Center
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                FilledTonalButton(
+                    onClick = onCancel,
+                    modifier = Modifier
+                        .width(68.dp)
+                        .height(38.dp),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = Color.White.copy(alpha = 0.16f),
+                        contentColor = TextPrimary
+                    )
+                ) {
+                    Text(
+                        text = "继续",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+
                 Button(
                     onClick = onConfirm,
                     modifier = Modifier
                         .width(68.dp)
-                        .height(36.dp),
+                        .height(38.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = WarningRed,
                         contentColor = DarkBackground
                     )
                 ) {
-                    Text(text = "停止", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                }
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                FilledTonalButton(
-                    onClick = onCancel,
-                    modifier = Modifier
-                        .width(68.dp)
-                        .height(36.dp),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = Color.White.copy(alpha = 0.15f),
-                        contentColor = TextPrimary
+                    Text(
+                        text = "结束",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold
                     )
-                ) {
-                    Text(text = "取消", style = MaterialTheme.typography.labelSmall)
                 }
             }
         }

@@ -11,11 +11,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -31,7 +31,8 @@ import androidx.wear.compose.material3.Text
 import com.takeabreak.wearos.timer.TimerState
 import com.takeabreak.wearos.timer.TimerStatus
 import com.takeabreak.wearos.ui.theme.DarkBackground
-import com.takeabreak.wearos.ui.theme.PauseGray
+import com.takeabreak.wearos.ui.theme.SurfaceDark
+import com.takeabreak.wearos.ui.theme.TextMuted
 import com.takeabreak.wearos.ui.theme.TextPrimary
 import com.takeabreak.wearos.ui.theme.TextSecondary
 import com.takeabreak.wearos.ui.theme.WarningRed
@@ -54,17 +55,17 @@ fun SettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(DarkBackground)
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 14.dp),
         state = listState,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         item {
             Text(
-                text = "设置",
+                text = "偏好设置",
                 style = MaterialTheme.typography.titleMedium,
                 color = TextPrimary,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
             )
         }
 
@@ -72,36 +73,40 @@ fun SettingsScreen(
             item {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.9f)
-                        .background(WarningRed.copy(alpha = 0.2f))
-                        .padding(vertical = 4.dp, horizontal = 8.dp),
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(WarningRed.copy(alpha = 0.16f))
+                        .padding(vertical = 6.dp, horizontal = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "计时中无法修改，请先停止",
+                        text = "计时运行中不可调整时长，请先结束",
                         style = MaterialTheme.typography.labelSmall,
                         color = WarningRed,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         textAlign = TextAlign.Center
                     )
                 }
             }
         }
 
-        // 工作时长
+        // 工作时长选择卡片
         item {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp),
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(SurfaceDark)
+                    .padding(vertical = 8.dp, horizontal = 6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "工作时长",
-                    style = MaterialTheme.typography.labelSmall,
+                    text = "工作/专注时长",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
                     color = TextSecondary
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     horizontalArrangement = Arrangement.Center,
                     modifier = Modifier.fillMaxWidth()
@@ -112,18 +117,17 @@ fun SettingsScreen(
                             onClick = { if (isStopped) onSetWorkDuration(minutes) },
                             enabled = isStopped,
                             modifier = Modifier
-                                .padding(horizontal = 2.dp)
-                                .width(46.dp)
-                                .height(32.dp),
+                                .padding(horizontal = 3.dp)
+                                .weight(1f)
+                                .height(36.dp),
                             colors = ButtonDefaults.filledTonalButtonColors(
-                                containerColor = if (selected) WorkBluePrimary else Color.White.copy(alpha = 0.12f),
+                                containerColor = if (selected) WorkBluePrimary else Color.White.copy(alpha = 0.08f),
                                 contentColor = if (selected) DarkBackground else TextPrimary
                             )
                         ) {
                             Text(
-                                text = "${minutes}m",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontSize = 11.sp,
+                                text = "${minutes}分",
+                                fontSize = 12.sp,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
                             )
                         }
@@ -132,20 +136,23 @@ fun SettingsScreen(
             }
         }
 
-        // 休息时长
+        // 休息时长选择卡片
         item {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp),
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(SurfaceDark)
+                    .padding(vertical = 8.dp, horizontal = 6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
                     text = "休息时长",
-                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
                     color = TextSecondary
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     horizontalArrangement = Arrangement.Center,
                     modifier = Modifier.fillMaxWidth()
@@ -156,18 +163,17 @@ fun SettingsScreen(
                             onClick = { if (isStopped) onSetBreakDuration(minutes) },
                             enabled = isStopped,
                             modifier = Modifier
-                                .padding(horizontal = 2.dp)
-                                .width(46.dp)
-                                .height(32.dp),
+                                .padding(horizontal = 3.dp)
+                                .weight(1f)
+                                .height(36.dp),
                             colors = ButtonDefaults.filledTonalButtonColors(
-                                containerColor = if (selected) WorkBluePrimary else Color.White.copy(alpha = 0.12f),
+                                containerColor = if (selected) WorkBluePrimary else Color.White.copy(alpha = 0.08f),
                                 contentColor = if (selected) DarkBackground else TextPrimary
                             )
                         ) {
                             Text(
-                                text = "${minutes}m",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontSize = 11.sp,
+                                text = "${minutes}分",
+                                fontSize = 12.sp,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
                             )
                         }
@@ -176,95 +182,63 @@ fun SettingsScreen(
             }
         }
 
-        // 提醒状态页入口
-        item {
-            Button(
-                onClick = onOpenReminderStatus,
-                modifier = Modifier
-                    .fillMaxWidth(0.85f)
-                    .height(38.dp)
-                    .padding(vertical = 2.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.White.copy(alpha = 0.15f),
-                    contentColor = TextPrimary
-                )
-            ) {
-                Text(
-                    text = "查看提醒状态",
-                    style = MaterialTheme.typography.labelSmall
-                )
-            }
-        }
-
-        // 精确闹钟授权入口
+        // 提醒状态与测试入口
         item {
             FilledTonalButton(
-                onClick = onOpenExactAlarmSettings,
+                onClick = onOpenReminderStatus,
                 modifier = Modifier
-                    .fillMaxWidth(0.85f)
-                    .height(38.dp)
+                    .fillMaxWidth()
+                    .height(44.dp)
                     .padding(vertical = 2.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = Color.White.copy(alpha = 0.12f),
+                    containerColor = SurfaceDark,
                     contentColor = TextPrimary
                 )
             ) {
                 Text(
-                    text = "精确闹钟授权",
-                    style = MaterialTheme.typography.labelSmall
+                    text = "提醒与权限诊断",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }
 
-        // 系统通知设置
+        // 系统通知设置直达
         item {
             FilledTonalButton(
                 onClick = onOpenSystemNotificationSettings,
                 modifier = Modifier
-                    .fillMaxWidth(0.85f)
-                    .height(38.dp)
+                    .fillMaxWidth()
+                    .height(44.dp)
                     .padding(vertical = 2.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = SurfaceDark,
+                    contentColor = TextPrimary
+                )
+            ) {
+                Text(
+                    text = "手表通知设置",
+                    fontSize = 12.sp
+                )
+            }
+        }
+
+        // 返回
+        item {
+            FilledTonalButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .fillMaxWidth(0.6f)
+                    .height(36.dp)
+                    .padding(top = 4.dp, bottom = 12.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = Color.White.copy(alpha = 0.12f),
                     contentColor = TextSecondary
                 )
             ) {
                 Text(
-                    text = "手表通知设置",
-                    style = MaterialTheme.typography.labelSmall
-                )
-            }
-        }
-
-        // 版本信息
-        item {
-            val context = LocalContext.current
-            val displayVersion = remember(context) {
-                try {
-                    val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-                    "v" + (pInfo.versionName ?: "2.2.0")
-                } catch (_: Exception) {
-                    "v2.2.0"
-                }
-            }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 6.dp, bottom = 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "休息一下 Wear OS $displayVersion",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = PauseGray,
-                    fontSize = 10.sp
-                )
-                Text(
-                    text = "Galaxy Watch 7 纯原生架构",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = PauseGray.copy(alpha = 0.7f),
-                    fontSize = 9.sp
+                    text = "返回",
+                    fontSize = 12.sp
                 )
             }
         }
