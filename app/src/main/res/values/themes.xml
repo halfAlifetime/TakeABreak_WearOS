@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.TakeABreak" parent="android:Theme.DeviceDefault">
+        <item name="android:windowBackground">@color/dark_bg</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowSwipeToDismiss">true</item>
+    </style>
+</resources>

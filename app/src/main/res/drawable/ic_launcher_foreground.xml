@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Clock ring -->
+    <path
+        android:strokeColor="#38BDF8"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M54,24 A30,30 0 1,1 24,54" />
+    <!-- Break leaf accent -->
+    <path
+        android:fillColor="#4ADE80"
+        android:pathData="M54,54 C54,42 66,34 78,34 C78,46 70,58 54,54 Z" />
+    <!-- Clock center pin -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,54m-4,0a4,4 0 1,0 8,0a4,4 0 1,0 -8,0" />
+    <!-- Clock hand -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M54,54 L54,36" />
+</vector>

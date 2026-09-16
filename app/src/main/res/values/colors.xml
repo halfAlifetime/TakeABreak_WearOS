@@ -1,0 +1,8 @@
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="work_blue">#FF4D9FFF</color>
+    <color name="break_green">#FF4ADE80</color>
+    <color name="pause_gray">#FF94A3B8</color>
+    <color name="dark_bg">#FF000000</color>
+</resources>

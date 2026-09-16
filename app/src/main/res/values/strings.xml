@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">休息一下</string>
+    <string name="channel_status_name">计时状态</string>
+    <string name="channel_status_desc">显示当前计时进度和结束时间</string>
+    <string name="channel_break_name">休息开始</string>
+    <string name="channel_break_desc">工作结束并提醒开始休息的振动通知</string>
+    <string name="channel_work_name">工作开始</string>
+    <string name="channel_work_desc">休息结束并提醒开始工作的振动通知</string>
+    <string name="channel_error_name">计时异常</string>
+    <string name="channel_error_desc">提示系统权限缺失或计时中断等异常信息</string>
+</resources>
