@@ -43,7 +43,7 @@ import java.util.Locale
 fun ReminderStatusScreen(
     state: TimerState,
     permissionEvaluation: ReminderDiagnostics,
-    actionFeedback: String?,
+    feedback: ActionFeedback?,
     onTestBreakReminder: () -> Unit,
     onTestWorkReminder: () -> Unit,
     onOpenExactAlarmSettings: () -> Unit,
@@ -203,10 +203,10 @@ fun ReminderStatusScreen(
                 modifier = Modifier.fillMaxWidth(0.9f)
             )
         }
-        if (actionFeedback != null) {
+        if (feedback != null) {
             item {
                 Text(
-                    text = actionFeedback,
+                    text = feedback.message,
                     style = MaterialTheme.typography.labelSmall,
                     color = TextPrimary,
                     fontSize = 12.sp,

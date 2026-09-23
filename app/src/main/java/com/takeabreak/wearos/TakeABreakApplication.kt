@@ -1,6 +1,7 @@
 package com.takeabreak.wearos
 
 import android.app.Application
+import com.takeabreak.wearos.ui.TimerViewModelFactory
 import com.takeabreak.wearos.alarm.AlarmScheduler
 import com.takeabreak.wearos.alarm.AndroidAlarmScheduler
 import com.takeabreak.wearos.notification.AndroidReminderNotifier
@@ -40,6 +41,9 @@ class TakeABreakApplication : Application() {
     lateinit var timerEngine: TimerEngine
         private set
 
+    lateinit var timerViewModelFactory: TimerViewModelFactory
+        private set
+
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -57,6 +61,9 @@ class TakeABreakApplication : Application() {
             notifier = reminderNotifier,
             clockProvider = clockProvider,
             stopIntentStore = SharedPreferencesStopIntentStore(this)
+        )
+        timerViewModelFactory = TimerViewModelFactory(
+            timerEngine, clockProvider, capabilityReader, reminderNotifier::sendTestReminder
         )
 
     }

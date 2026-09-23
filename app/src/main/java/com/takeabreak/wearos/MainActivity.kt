@@ -43,7 +43,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private val viewModel: TimerViewModel by viewModels()
+    private val viewModel: TimerViewModel by viewModels {
+        (application as TakeABreakApplication).timerViewModelFactory
+    }
 
     private val requestNotificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -93,9 +95,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onOpenExactAlarmSettings = {
                         val intent = ReminderSettingsNavigator.createExactAlarmSettingsIntent(this)
-                        if (intent != null) {
-                            runCatching { startActivity(intent) }
-                        }
+                        runCatching { startActivity(intent) }
                     },
                     onOpenSettingTarget = { target ->
                         val targetIntent = when (target) {
@@ -179,8 +179,6 @@ fun MainAppNavHost(
     val tickElapsed by viewModel.uiTickElapsed
     val permissionEvaluation by viewModel.permissionState
     val feedback by viewModel.feedback
-    val actionMessage by viewModel.actionMessage
-    val actionSettingTarget by viewModel.actionSettingTarget
     val navCommand by viewModel.navigationCommand
 
     // 监听导航命令（例如表盘小图标、常驻通知点击触发的返回 timer 页面意图）
@@ -210,14 +208,12 @@ fun MainAppNavHost(
                 state = timerState,
                 tickElapsed = tickElapsed,
                 feedback = feedback,
-                actionMessage = actionMessage,
-                actionSettingTarget = actionSettingTarget,
                 onStart = { viewModel.startTimer() },
                 onPause = { viewModel.pauseTimer() },
                 onResume = { viewModel.resumeTimer() },
                 onRetry = { viewModel.retryTimer() },
                 onStop = { viewModel.stopTimer() },
-                onClearActionMessage = { viewModel.clearActionMessage() },
+                onClearFeedback = { viewModel.clearFeedback() },
                 onOpenSettingTarget = onOpenSettingTarget,
                 onOpenSettings = { navController.navigate("settings") }
             )
@@ -239,7 +235,7 @@ fun MainAppNavHost(
             ReminderStatusScreen(
                 state = timerState,
                 permissionEvaluation = permissionEvaluation,
-                actionFeedback = actionMessage,
+                feedback = feedback,
                 onTestBreakReminder = { viewModel.testBreakReminder() },
                 onTestWorkReminder = { viewModel.testWorkReminder() },
                 onOpenExactAlarmSettings = onOpenExactAlarmSettings,
