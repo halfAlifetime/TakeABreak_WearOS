@@ -579,19 +579,29 @@ class TimerEngine(
     /**
      * 修改时长设置（仅允许在 STOPPED 状态修改）
      */
-    suspend fun updateDurations(workMinutes: Int, breakMinutes: Int): Result<Unit> = mutate {
+    suspend fun updateWorkDuration(minutes: Int): Result<Unit> = updateDurationFields(workMinutes = minutes)
+
+    suspend fun updateBreakDuration(minutes: Int): Result<Unit> = updateDurationFields(breakMinutes = minutes)
+
+    internal suspend fun updateDurations(workMinutes: Int, breakMinutes: Int): Result<Unit> =
+        updateDurationFields(workMinutes, breakMinutes)
+
+    // Merge only after obtaining the engine lock; callers never supply an unchanged stale field.
+    private suspend fun updateDurationFields(workMinutes: Int? = null, breakMinutes: Int? = null): Result<Unit> = mutate {
         val current = getEffectiveStateInternal()
         if (current.status != TimerStatus.STOPPED) {
             return@mutate Result.failure(IllegalStateException("计时运行或暂停中无法修改时长，请先停止"))
         }
 
-        if (workMinutes <= 0 || breakMinutes <= 0) {
+        val nextWork = workMinutes ?: current.workDurationMinutes
+        val nextBreak = breakMinutes ?: current.breakDurationMinutes
+        if (nextWork <= 0 || nextBreak <= 0) {
             return@mutate Result.failure(IllegalArgumentException("计时时长必须大于 0"))
         }
         val updatedState = current.copy(
-            workDurationMinutes = workMinutes,
-            breakDurationMinutes = breakMinutes,
-            phaseTotalDurationMs = workMinutes * 60_000L
+            workDurationMinutes = nextWork,
+            breakDurationMinutes = nextBreak,
+            phaseTotalDurationMs = nextWork * 60_000L
         )
         safeUpdateStateWithRetry { updatedState }.map { saved ->
             updateEffectiveState(saved)

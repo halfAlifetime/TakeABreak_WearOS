@@ -210,7 +210,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
             val res = runCatching {
-                timerEngine.updateDurations(workMinutes = minutes, breakMinutes = state.breakDurationMinutes)
+                timerEngine.updateWorkDuration(minutes)
             }.getOrElse { Result.failure(it) }
             if (res.isFailure) {
                 _feedback.value = ActionFeedback(
@@ -234,7 +234,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
             val res = runCatching {
-                timerEngine.updateDurations(workMinutes = state.workDurationMinutes, breakMinutes = minutes)
+                timerEngine.updateBreakDuration(minutes)
             }.getOrElse { Result.failure(it) }
             if (res.isFailure) {
                 _feedback.value = ActionFeedback(

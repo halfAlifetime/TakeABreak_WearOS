@@ -18,7 +18,6 @@ interface TimerRepository {
     val timerStateFlow: Flow<TimerState>
     suspend fun getTimerState(): TimerState
     suspend fun updateTimerState(transform: (TimerState) -> TimerState): TimerState
-    suspend fun saveDurations(workMinutes: Int, breakMinutes: Int)
 }
 
 class DataStoreTimerRepository(private val context: Context) : TimerRepository {
@@ -81,13 +80,6 @@ class DataStoreTimerRepository(private val context: Context) : TimerRepository {
             }
         }
         return updatedState
-    }
-
-    override suspend fun saveDurations(workMinutes: Int, breakMinutes: Int) {
-        context.timerDataStore.edit { prefs ->
-            prefs[PreferencesKeys.WORK_DURATION_MIN] = workMinutes
-            prefs[PreferencesKeys.BREAK_DURATION_MIN] = breakMinutes
-        }
     }
 
     private fun mapPreferencesToTimerState(prefs: Preferences): TimerState {

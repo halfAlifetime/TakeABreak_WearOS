@@ -49,12 +49,7 @@ class FakeTimerRepository : TimerRepository {
         return updated
     }
 
-    override suspend fun saveDurations(workMinutes: Int, breakMinutes: Int) {
-        if (failWrites) {
-            throw java.io.IOException("Fake storage save failure")
-        }
-        updateTimerState { it.copy(workDurationMinutes = workMinutes, breakDurationMinutes = breakMinutes) }
-    }
+
 }
 
 class FakeStopIntentStore : StopIntentStore {
