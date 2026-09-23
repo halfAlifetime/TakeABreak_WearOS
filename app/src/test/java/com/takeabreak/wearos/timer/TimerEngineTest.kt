@@ -360,7 +360,7 @@ class TimerEngineTest {
 
         // 推进 20 分钟后发生系统改时
         clock.advance(20 * 60 * 1000L)
-        val state = engine.onSystemEvent(android.content.Intent.ACTION_TIME_CHANGED)
+        val state = engine.onSystemEvent(TimerSystemEvent.TIME_CHANGED)
 
         assertEquals(TimerStatus.RUNNING, state.status)
         assertEquals(clock.elapsed + 40 * 60 * 1000L, state.deadlineElapsedRealtimeMs)
@@ -377,7 +377,7 @@ class TimerEngineTest {
         clock.wall += 15 * 60 * 1000L
         clock.elapsed = 5000L // 开机 5 秒
 
-        val state = engine.onSystemEvent(android.content.Intent.ACTION_BOOT_COMPLETED)
+        val state = engine.onSystemEvent(TimerSystemEvent.BOOT_COMPLETED)
         assertEquals(TimerStatus.RUNNING, state.status)
         // 剩余 45 分钟 = 45 * 60 * 1000L
         assertEquals(clock.elapsed + 45 * 60 * 1000L, state.deadlineElapsedRealtimeMs)
@@ -393,7 +393,7 @@ class TimerEngineTest {
         clock.elapsed = 10000L // 开机 10 秒
 
         // 真正重启后阶段已过期：遵循原设计，置为暂停并提示继续，不开机后擅自补发阶段振动
-        val state = engine.onSystemEvent(android.content.Intent.ACTION_BOOT_COMPLETED)
+        val state = engine.onSystemEvent(TimerSystemEvent.BOOT_COMPLETED)
         assertEquals(TimerStatus.PAUSED, state.status)
         assertEquals(0L, state.pausedRemainingMs)
         assertEquals(0, notifier.phaseReminders.size) // 开机时不擅自补发阶段振动
@@ -443,7 +443,7 @@ class TimerEngineTest {
         clock.wall -= 3600 * 1000L
         clock.advance(5000L) // 运行了 5 秒
 
-        val reconciledState = engine.onSystemEvent(android.content.Intent.ACTION_TIME_CHANGED)
+        val reconciledState = engine.onSystemEvent(TimerSystemEvent.TIME_CHANGED)
         // 状态依然是 RUNNING，deadline 基于单调 elapsedRealtime 保持准确定时
         assertEquals(TimerStatus.RUNNING, reconciledState.status)
         assertTrue(reconciledState.deadlineElapsedRealtimeMs > clock.elapsed)
@@ -476,7 +476,7 @@ class TimerEngineTest {
 
         // 验证 3：存储恢复正常后触发系统对账事件，绝不以系统恢复为由偷偷重新安排闹钟
         repo.failWrites = false
-        val reconciled = engine.onSystemEvent(android.content.Intent.ACTION_TIME_CHANGED)
+        val reconciled = engine.onSystemEvent(TimerSystemEvent.TIME_CHANGED)
         assertEquals(TimerStatus.STOPPED, reconciled.status)
         assertEquals(0L, reconciled.deadlineElapsedRealtimeMs)
     }

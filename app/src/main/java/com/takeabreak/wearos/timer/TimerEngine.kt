@@ -1,6 +1,5 @@
 package com.takeabreak.wearos.timer
 
-import android.content.Intent
 import com.takeabreak.wearos.alarm.AlarmScheduler
 import com.takeabreak.wearos.notification.ReminderNotifier
 import com.takeabreak.wearos.notification.NotificationActions
@@ -20,13 +19,6 @@ import kotlinx.coroutines.sync.withLock
 import java.io.IOException
 import java.util.Collections
 import java.util.UUID
-
-private data class ResumeTarget(
-    val phase: TimerPhase,
-    val round: Int,
-    val durationMs: Long,
-    val eventMessage: String
-)
 
 class TimerEngine(
     private val repository: TimerRepository,
@@ -71,6 +63,7 @@ class TimerEngine(
             val unknown = TimerState(
                 generation = stopIntentStore.stoppedThroughGeneration().coerceAtLeast(0L),
                 status = TimerStatus.ERROR,
+                failureReason = TimerFailure.STORAGE_READ,
                 errorMessage = "暂时无法读取计时状态，请重试",
                 lastEventResult = "计时状态读取失败"
             )
@@ -100,6 +93,7 @@ class TimerEngine(
                 deadlineElapsedRealtimeMs = 0L,
                 deadlineWallClockMs = 0L,
                 pausedRemainingMs = 0L,
+                failureReason = null,
                 errorMessage = null,
                 lastEventResult = "已主动停止"
             )
@@ -210,6 +204,7 @@ class TimerEngine(
             lastEventId = "START_${newSessionId.take(8)}",
             lastEventResult = "开始第 1 轮工作",
             lastEventTimestampMs = nowWall,
+            failureReason = null,
             errorMessage = null
         )
 
@@ -218,6 +213,7 @@ class TimerEngine(
         if (!scheduled) {
             val errorState = startState.copy(
                 status = TimerStatus.ERROR,
+                failureReason = TimerFailure.ALARM_SCHEDULING,
                 pausedRemainingMs = workDurationMs,
                 deadlineElapsedRealtimeMs = 0L,
                 deadlineWallClockMs = 0L,
@@ -246,6 +242,7 @@ class TimerEngine(
         scheduler.cancelPhaseAlarm(newGeneration)
         val faultState = startState.copy(
             status = TimerStatus.ERROR,
+            failureReason = TimerFailure.STORAGE_WRITE,
             pausedRemainingMs = workDurationMs,
             deadlineElapsedRealtimeMs = 0L,
             deadlineWallClockMs = 0L,
@@ -289,6 +286,7 @@ class TimerEngine(
             deadlineWallClockMs = 0L,
             lastEventResult = "已暂停，剩余 ${remainingMs / 1000}秒",
             lastEventTimestampMs = nowWall,
+            failureReason = null,
             errorMessage = null
         )
 
@@ -303,6 +301,7 @@ class TimerEngine(
         // 持续落盘失败防御：旧闹钟已被取消，发布明确故障状态并同步内存权威状态
         val errorState = pausedState.copy(
             status = TimerStatus.ERROR,
+            failureReason = TimerFailure.STORAGE_WRITE,
             errorMessage = "存储故障，计时已中断",
             lastEventResult = "暂停保存失败，转为错误态"
         )
@@ -332,24 +331,7 @@ class TimerEngine(
             return Result.success(current)
         }
 
-        val target = when {
-            current.pausedRemainingMs > 0L -> {
-                ResumeTarget(current.phase, current.currentRound, current.pausedRemainingMs, "已恢复计时")
-            }
-            current.pausedRemainingMs == 0L -> {
-                val (nextPhase, nextRound, nextMin) = when (current.phase) {
-                    TimerPhase.WORK -> Triple(TimerPhase.BREAK, current.currentRound, current.breakDurationMinutes)
-                    TimerPhase.BREAK -> Triple(TimerPhase.WORK, current.currentRound + 1, current.workDurationMinutes)
-                }
-                ResumeTarget(nextPhase, nextRound, nextMin * 60_000L, "前阶段已到期，确认继续进入 $nextPhase (第 $nextRound 轮)")
-            }
-            current.phaseTotalDurationMs > 0L -> {
-                ResumeTarget(current.phase, current.currentRound, current.phaseTotalDurationMs, "已恢复计时")
-            }
-            else -> {
-                ResumeTarget(TimerPhase.WORK, 1, current.workDurationMinutes * 60_000L, "已恢复计时")
-            }
-        }
+        val target = TimerTransitions.resume(current)
 
         if (target.durationMs <= 0L) {
             return Result.failure(IllegalStateException("剩余时长无效，无法恢复"))
@@ -359,30 +341,20 @@ class TimerEngine(
         val nowWall = clockProvider.currentTimeMillis()
         val nextGeneration = current.generation + 1L
 
-        val originalTotalDurationMs = if (target.phase != current.phase) {
-            target.durationMs
-        } else if (current.phaseTotalDurationMs > 0L) {
-            current.phaseTotalDurationMs
-        } else {
-            when (target.phase) {
-                TimerPhase.WORK -> current.workDurationMinutes * 60_000L
-                TimerPhase.BREAK -> current.breakDurationMinutes * 60_000L
-            }
-        }
-
         val resumedState = current.copy(
             generation = nextGeneration,
             status = TimerStatus.RUNNING,
             phase = target.phase,
             currentRound = target.round,
-            phaseTotalDurationMs = originalTotalDurationMs,
+            phaseTotalDurationMs = target.totalDurationMs,
             pausedRemainingMs = 0L,
             deadlineElapsedRealtimeMs = nowElapsed + target.durationMs,
             deadlineWallClockMs = nowWall + target.durationMs,
             bootIdentifier = nowElapsed,
             bootCount = clockProvider.bootCount(),
-            lastEventResult = target.eventMessage,
+            lastEventResult = if (target.advancesPhase) "前阶段已到期，确认继续进入 ${target.phase} (第 ${target.round} 轮)" else "已恢复计时",
             lastEventTimestampMs = nowWall,
+            failureReason = null,
             errorMessage = null
         )
 
@@ -393,6 +365,7 @@ class TimerEngine(
             scheduler.cancelPhaseAlarm(nextGeneration)
             val errorState = resumedState.copy(
                 status = TimerStatus.ERROR,
+                failureReason = TimerFailure.ALARM_SCHEDULING,
                 pausedRemainingMs = target.durationMs,
                 deadlineElapsedRealtimeMs = 0L,
                 deadlineWallClockMs = 0L,
@@ -419,6 +392,7 @@ class TimerEngine(
         scheduler.cancelPhaseAlarm(nextGeneration)
         val faultState = resumedState.copy(
             status = TimerStatus.ERROR,
+            failureReason = TimerFailure.STORAGE_WRITE,
             pausedRemainingMs = target.durationMs,
             deadlineElapsedRealtimeMs = 0L,
             deadlineWallClockMs = 0L,
@@ -492,6 +466,7 @@ class TimerEngine(
         pausedRemainingMs = 0L,
         lastEventResult = "已主动停止",
         lastEventTimestampMs = clockProvider.currentTimeMillis(),
+        failureReason = null,
         errorMessage = null
     )
 
@@ -526,7 +501,7 @@ class TimerEngine(
         } else {
             "通知停止请求保存失败，请重试"
         }
-        updateEffectiveState(unknown.copy(errorMessage = message))
+        updateEffectiveState(unknown.copy(errorMessage = message, failureReason = if (journalResult.isSuccess) TimerFailure.STORAGE_READ else TimerFailure.STORAGE_WRITE))
         stateReadFailed = true
         return Result.failure(IOException(message, saveResult.exceptionOrNull()))
     }
@@ -660,6 +635,7 @@ class TimerEngine(
             } else {
                 val errorState = current.copy(
                     status = TimerStatus.ERROR,
+                    failureReason = TimerFailure.ALARM_SCHEDULING,
                     pausedRemainingMs = prematureDiff,
                     deadlineElapsedRealtimeMs = 0L,
                     deadlineWallClockMs = 0L,
@@ -675,10 +651,7 @@ class TimerEngine(
         }
 
         // 4. 计算下一阶段与轮数
-        val (nextPhase, nextRound, nextDurationMinutes) = when (current.phase) {
-            TimerPhase.WORK -> Triple(TimerPhase.BREAK, current.currentRound, current.breakDurationMinutes)
-            TimerPhase.BREAK -> Triple(TimerPhase.WORK, current.currentRound + 1, current.workDurationMinutes)
-        }
+        val (nextPhase, nextRound, nextDurationMinutes) = TimerTransitions.nextPhase(current)
         val nextDurationMs = nextDurationMinutes * 60_000L
         val nextGeneration = current.generation + 1L
 
@@ -694,6 +667,7 @@ class TimerEngine(
             lastEventId = "PHASE_${nextGeneration}",
             lastEventResult = "成功进入 $nextPhase (第 $nextRound 轮)",
             lastEventTimestampMs = nowWall,
+            failureReason = null,
             errorMessage = null
         )
 
@@ -704,6 +678,7 @@ class TimerEngine(
             scheduler.cancelPhaseAlarm(nextGeneration)
             val failureState = nextState.copy(
                 status = TimerStatus.ERROR,
+                failureReason = TimerFailure.ALARM_SCHEDULING,
                 pausedRemainingMs = nextDurationMs,
                 deadlineElapsedRealtimeMs = 0L,
                 deadlineWallClockMs = 0L,
@@ -737,6 +712,7 @@ class TimerEngine(
         scheduler.cancelPhaseAlarm(nextGeneration)
         val errorState = nextState.copy(
             status = TimerStatus.ERROR,
+            failureReason = TimerFailure.STORAGE_WRITE,
             pausedRemainingMs = nextDurationMs,
             deadlineElapsedRealtimeMs = 0L,
             deadlineWallClockMs = 0L,
@@ -753,7 +729,7 @@ class TimerEngine(
     /**
      * 系统生命周期事件（开机、系统时间调整、时区变化、安装更新、精确闹钟权限恢复）对账处理
      */
-    suspend fun onSystemEvent(reason: String): TimerState = mutate {
+    suspend fun onSystemEvent(reason: TimerSystemEvent): TimerState = mutate {
         val current = getEffectiveStateInternal()
         if (stateReadFailed) return@mutate current
 
@@ -765,7 +741,9 @@ class TimerEngine(
                 status = TimerStatus.STOPPED,
                 deadlineElapsedRealtimeMs = 0L,
                 deadlineWallClockMs = 0L,
-                pausedRemainingMs = 0L
+                pausedRemainingMs = 0L,
+                failureReason = null,
+                errorMessage = null
             )
             updateEffectiveState(stopped)
             runCatching { repository.updateTimerState { stopped } }
@@ -773,12 +751,9 @@ class TimerEngine(
         }
 
         // 权限恢复事件处理：若之前因缺少权限处于 ERROR，立即自动重试恢复
-        if (reason == "android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED") {
-            val isAlarmRelated = current.errorMessage?.contains("闹钟") == true ||
-                    current.errorMessage?.contains("权限") == true ||
-                    current.lastEventResult.contains("闹钟") ||
-                    current.lastEventResult.contains("权限")
-            if (current.status == TimerStatus.ERROR && isAlarmRelated && scheduler.canScheduleExactAlarms()) {
+        if (reason == TimerSystemEvent.EXACT_ALARM_PERMISSION_CHANGED) {
+            if (current.status == TimerStatus.ERROR &&
+                TimerRecoveryPolicy.canRetryAfterPermissionGrant(current, scheduler.canScheduleExactAlarms())) {
                 val retryResult = resumeLocked(current)
                 return@mutate retryResult.getOrElse { getEffectiveStateInternal() }
             }
@@ -799,20 +774,11 @@ class TimerEngine(
         // 1. 真实系统重启：单调时钟归零，以 wallClock 为准对账
         // 2. 同一次开机：单调时钟 elapsedRealtime 绝对单调递增，必须严格以 elapsedRealtime 计算剩余时间！
         val currentBootCount = clockProvider.bootCount()
-        val isTrueBoot = reason == Intent.ACTION_BOOT_COMPLETED ||
-            if (current.bootCount != null && currentBootCount != null) {
-                current.bootCount != currentBootCount
-            } else {
-                current.bootIdentifier > 0L && nowElapsed < current.bootIdentifier
-            }
+        val timing = TimerRecoveryPolicy.timing(current, reason, nowElapsed, nowWall, currentBootCount)
+        val isTrueBoot = timing.isTrueBoot
+        val remainingMs = timing.remainingMs
 
-        val remainingMs = if (isTrueBoot) {
-            (current.deadlineWallClockMs - nowWall).coerceAtLeast(0L)
-        } else {
-            (current.deadlineElapsedRealtimeMs - nowElapsed).coerceAtLeast(0L)
-        }
-
-        if (remainingMs > 1000L) {
+        if (!timing.needsConfirmation) {
             val nextGeneration = current.generation + 1L
             val reconciledState = current.copy(
                 generation = nextGeneration,
@@ -823,6 +789,7 @@ class TimerEngine(
                 bootCount = currentBootCount,
                 lastEventResult = "系统事件($reason)对账完成，已重新排程",
                 lastEventTimestampMs = nowWall,
+                failureReason = null,
                 errorMessage = null
             )
             val scheduled = scheduler.schedulePhaseAlarm(reconciledState, previousGeneration = current.generation)
@@ -837,6 +804,7 @@ class TimerEngine(
                     scheduler.cancelPhaseAlarm(nextGeneration)
                     val errorState = reconciledState.copy(
                         status = TimerStatus.ERROR,
+                        failureReason = TimerFailure.STORAGE_WRITE,
                         pausedRemainingMs = remainingMs,
                         deadlineElapsedRealtimeMs = 0L,
                         deadlineWallClockMs = 0L,
@@ -852,6 +820,7 @@ class TimerEngine(
                 scheduler.cancelPhaseAlarm(nextGeneration)
                 val errorState = reconciledState.copy(
                     status = TimerStatus.ERROR,
+                    failureReason = TimerFailure.ALARM_SCHEDULING,
                     pausedRemainingMs = remainingMs,
                     deadlineElapsedRealtimeMs = 0L,
                     deadlineWallClockMs = 0L,
@@ -877,6 +846,7 @@ class TimerEngine(
                 bootCount = currentBootCount,
                 lastEventResult = "系统事件($reason)对账：阶段已到期",
                 lastEventTimestampMs = nowWall,
+                failureReason = null,
                 errorMessage = null
             )
             val saveResult = safeUpdateStateWithRetry(maxAttempts = 2) { expiredState }

@@ -1,6 +1,5 @@
 package com.takeabreak.wearos.timer
 
-import android.content.Intent
 import com.takeabreak.wearos.notification.NotificationActions
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -42,8 +41,8 @@ class NotificationStopRecoveryTest {
         val recreated = engine(reloadedJournal())
         assertTrue(recreated.onPhaseAlarm(original.sessionId, original.generation, original.phase, 1)
             is PhaseTransitionResult.Ignored)
-        assertEquals(TimerStatus.STOPPED, recreated.onSystemEvent(Intent.ACTION_TIME_CHANGED).status)
-        assertEquals(TimerStatus.STOPPED, recreated.onSystemEvent(Intent.ACTION_BOOT_COMPLETED).status)
+        assertEquals(TimerStatus.STOPPED, recreated.onSystemEvent(TimerSystemEvent.TIME_CHANGED).status)
+        assertEquals(TimerStatus.STOPPED, recreated.onSystemEvent(TimerSystemEvent.BOOT_COMPLETED).status)
         assertTrue(recreated.resume().isFailure)
         assertEquals(1, scheduler.scheduledStates.size)
         assertTrue(scheduler.activeAlarms.isEmpty())
@@ -75,8 +74,8 @@ class NotificationStopRecoveryTest {
         repo.failWrites = true
         val cold = engine()
         cold.handleNotificationAction(NotificationActions.STOP, old.sessionId)
-        cold.onSystemEvent(Intent.ACTION_TIME_CHANGED)
-        cold.onSystemEvent(Intent.ACTION_BOOT_COMPLETED)
+        cold.onSystemEvent(TimerSystemEvent.TIME_CHANGED)
+        cold.onSystemEvent(TimerSystemEvent.BOOT_COMPLETED)
         assertEquals(cancellations, scheduler.allAlarmsCancelledCount)
         assertEquals(listOf(current), scheduler.activeAlarms.values.toList())
         assertEquals(current, notifier.statusShown)

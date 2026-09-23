@@ -1,6 +1,5 @@
 package com.takeabreak.wearos.timer
 
-import android.content.Intent
 import com.takeabreak.wearos.notification.NotificationActions
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -72,7 +71,7 @@ class TimerRecoveryTest {
         assertEquals(TimerStatus.STOPPED, recreated.timerStateFlow.first().status)
         assertTrue(recreated.onPhaseAlarm(started.sessionId, started.generation, started.phase, 1)
             is PhaseTransitionResult.Ignored)
-        assertEquals(TimerStatus.STOPPED, recreated.onSystemEvent(Intent.ACTION_TIME_CHANGED).status)
+        assertEquals(TimerStatus.STOPPED, recreated.onSystemEvent(TimerSystemEvent.TIME_CHANGED).status)
         assertEquals(1, scheduler.scheduledStates.size)
         assertTrue(scheduler.activeAlarms.isEmpty())
         assertTrue(notifier.phaseReminders.isEmpty())
@@ -102,8 +101,8 @@ class TimerRecoveryTest {
         assertTrue(recreated.onPhaseAlarm(original.sessionId, original.generation, original.phase, 1)
             is PhaseTransitionResult.Ignored)
         assertTrue(recreated.resume().isFailure)
-        assertEquals(TimerStatus.STOPPED, recreated.onSystemEvent(Intent.ACTION_TIME_CHANGED).status)
-        assertEquals(TimerStatus.STOPPED, recreated.onSystemEvent(Intent.ACTION_BOOT_COMPLETED).status)
+        assertEquals(TimerStatus.STOPPED, recreated.onSystemEvent(TimerSystemEvent.TIME_CHANGED).status)
+        assertEquals(TimerStatus.STOPPED, recreated.onSystemEvent(TimerSystemEvent.BOOT_COMPLETED).status)
         assertEquals(1, scheduler.scheduledStates.size)
         assertTrue(scheduler.activeAlarms.isEmpty())
         assertTrue(notifier.phaseReminders.isEmpty())
@@ -133,7 +132,7 @@ class TimerRecoveryTest {
         repo.failWrites = false
         assertEquals(original, repo.getTimerState())
         val recreated = newEngine()
-        assertEquals(TimerStatus.STOPPED, recreated.onSystemEvent(Intent.ACTION_TIME_CHANGED).status)
+        assertEquals(TimerStatus.STOPPED, recreated.onSystemEvent(TimerSystemEvent.TIME_CHANGED).status)
         assertTrue(scheduler.activeAlarms.isEmpty())
         assertEquals(TimerStatus.STOPPED, recreated.getTimerState().status)
     }
@@ -266,11 +265,11 @@ class TimerRecoveryTest {
         clock.elapsed = 5_000
         clock.wall += 10_000
         val recreated = newEngine()
-        recreated.onSystemEvent(Intent.ACTION_BOOT_COMPLETED)
+        recreated.onSystemEvent(TimerSystemEvent.BOOT_COMPLETED)
         val resumed = recreated.resume().getOrThrow()
         assertEquals(clock.elapsed, resumed.bootIdentifier)
         clock.wall += 3_600_000
-        val reconciled = recreated.onSystemEvent(Intent.ACTION_TIME_CHANGED)
+        val reconciled = recreated.onSystemEvent(TimerSystemEvent.TIME_CHANGED)
         assertEquals(TimerStatus.RUNNING, reconciled.status)
         assertEquals(remaining, reconciled.calculateRemainingMs(clock.elapsed))
     }
@@ -282,7 +281,7 @@ class TimerRecoveryTest {
         clock.boot = 5
         clock.wall += 1_800_000
         clock.elapsed += 500_000
-        val reconciled = newEngine().onSystemEvent(Intent.ACTION_TIME_CHANGED)
+        val reconciled = newEngine().onSystemEvent(TimerSystemEvent.TIME_CHANGED)
         assertEquals(1_800_000L, reconciled.calculateRemainingMs(clock.elapsed))
         assertEquals(5, reconciled.bootCount)
     }
@@ -291,7 +290,7 @@ class TimerRecoveryTest {
     fun permissionGrantReschedulesRunningTimer() = runBlocking {
         engine.start().getOrThrow()
         scheduler.activeAlarms.clear() // The OS removed alarms while permission was revoked.
-        val reconciled = engine.onSystemEvent("android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED")
+        val reconciled = engine.onSystemEvent(TimerSystemEvent.EXACT_ALARM_PERMISSION_CHANGED)
         assertEquals(reconciled, scheduler.activeAlarms[reconciled.generation])
         assertEquals(TimerStatus.RUNNING, reconciled.status)
     }
@@ -343,7 +342,7 @@ class TimerRecoveryTest {
                 Command.RESUME -> engine.resume()
                 Command.STOP -> engine.stop()
                 Command.PHASE -> engine.onPhaseAlarm(before.sessionId, before.generation, before.phase, 1)
-                Command.RECONCILE -> engine.onSystemEvent(Intent.ACTION_TIME_CHANGED)
+                Command.RECONCILE -> engine.onSystemEvent(TimerSystemEvent.TIME_CHANGED)
             }
         }
         try {

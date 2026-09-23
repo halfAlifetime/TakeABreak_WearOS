@@ -29,7 +29,8 @@ data class TimerState(
     val lastEventId: String = "",
     val lastEventResult: String = "",
     val lastEventTimestampMs: Long = 0L,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val failureReason: TimerFailure? = null
 ) {
     /**
      * 计算当前实际剩余毫秒数
