@@ -1,16 +1,13 @@
 package com.takeabreak.wearos.notification
 
-import android.app.Notification
-import android.media.AudioAttributes
 import android.os.Build
-import android.os.PowerManager
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
+import android.os.Bundle
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.wear.ongoing.OngoingActivity
 import androidx.wear.ongoing.Status
@@ -20,7 +17,6 @@ import com.takeabreak.wearos.timer.TimerPhase
 import com.takeabreak.wearos.timer.TimerState
 import com.takeabreak.wearos.timer.TimerStatus
 import java.text.SimpleDateFormat
-import java.util.Collections
 import java.util.Date
 import java.util.Locale
 
@@ -37,7 +33,8 @@ interface ReminderNotifier {
     fun clearStatusNotification()
     fun clearReminderNotifications()
     fun clearAllNotifications()
-    fun sendTestReminder(phase: TimerPhase)
+    fun clearSessionNotifications(sessionId: String)
+    fun sendTestReminder(phase: TimerPhase): ReminderTestResult
 }
 
 class AndroidReminderNotifier(private val context: Context) : ReminderNotifier {
@@ -48,65 +45,21 @@ class AndroidReminderNotifier(private val context: Context) : ReminderNotifier {
         const val NOTIFICATION_ID_TEST = 1003
         const val NOTIFICATION_ID_REMINDER = 2000
 
-        const val ACTION_PAUSE = "com.takeabreak.wearos.action.PAUSE"
-        const val ACTION_RESUME = "com.takeabreak.wearos.action.RESUME"
-        const val ACTION_STOP = "com.takeabreak.wearos.action.STOP"
-        const val EXTRA_SESSION_ID = "extra_session_id"
+        const val ACTION_PAUSE = NotificationActions.PAUSE
+        const val ACTION_RESUME = NotificationActions.RESUME
+        const val ACTION_STOP = NotificationActions.STOP
+        const val EXTRA_SESSION_ID = NotificationActions.EXTRA_SESSION_ID
     }
 
     private val notificationManager =
         context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
 
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+    private val vibration = AndroidReminderVibration(context)
 
-    private fun wakeScreen() {
-        runCatching {
-            val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-            @Suppress("DEPRECATION")
-            val screenLock = powerManager?.newWakeLock(
-                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
-                "TakeABreak:NotifierScreenWake"
-            )
-            screenLock?.acquire(4000L)
-        }
-    }
-
-    private fun triggerHaptic(phase: TimerPhase) {
-        runCatching {
-            val pattern = when (phase) {
-                TimerPhase.BREAK -> NotificationChannels.BREAK_VIBRATION_PATTERN
-                TimerPhase.WORK -> NotificationChannels.WORK_VIBRATION_PATTERN
-            }
-            val audioAttributes = AudioAttributes.Builder()
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .setUsage(AudioAttributes.USAGE_ALARM)
-                .build()
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
-                vm?.defaultVibrator?.vibrate(
-                    VibrationEffect.createWaveform(pattern, -1),
-                    audioAttributes
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    vibrator?.vibrate(
-                        VibrationEffect.createWaveform(pattern, -1),
-                        audioAttributes
-                    )
-                } else {
-                    @Suppress("DEPRECATION")
-                    vibrator?.vibrate(pattern, -1)
-                }
-            }
-        }
-    }
-
-
-    // 记录已发布的带 Tag 提醒通知，确保 stop 或启动新循环时彻底清空
-    private val activeReminderTags = Collections.synchronizedSet(mutableSetOf<String>())
+    private fun canUseFullScreenIntent(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
+            notificationManager?.canUseFullScreenIntent() == true
 
     override fun showStatusNotification(state: TimerState) {
         if (notificationManager == null) return
@@ -143,6 +96,7 @@ class AndroidReminderNotifier(private val context: Context) : ReminderNotifier {
         val isRunning = state.status == TimerStatus.RUNNING
 
         val builder = NotificationCompat.Builder(context, NotificationChannels.CHANNEL_STATUS_ID)
+            .addExtras(Bundle().apply { putString(EXTRA_SESSION_ID, state.sessionId) })
             .setSmallIcon(R.drawable.ic_ongoing_timer)
             .setContentTitle(title)
             .setContentText(content)
@@ -172,6 +126,7 @@ class AndroidReminderNotifier(private val context: Context) : ReminderNotifier {
             // 添加操作按钮：暂停
             val pauseIntent = Intent(context, NotificationActionReceiver::class.java).apply {
                 action = ACTION_PAUSE
+                data = Uri.parse("takeabreak://notification/${state.sessionId}")
                 putExtra(EXTRA_SESSION_ID, state.sessionId)
             }
             val pausePending = PendingIntent.getBroadcast(
@@ -185,6 +140,7 @@ class AndroidReminderNotifier(private val context: Context) : ReminderNotifier {
             // PAUSED 状态：撤下“运行中”持续活动入口，保留常驻普通暂停通知，提供继续
             val resumeIntent = Intent(context, NotificationActionReceiver::class.java).apply {
                 action = ACTION_RESUME
+                data = Uri.parse("takeabreak://notification/${state.sessionId}")
                 putExtra(EXTRA_SESSION_ID, state.sessionId)
             }
             val resumePending = PendingIntent.getBroadcast(
@@ -198,6 +154,7 @@ class AndroidReminderNotifier(private val context: Context) : ReminderNotifier {
 
         val stopIntent = Intent(context, NotificationActionReceiver::class.java).apply {
             action = ACTION_STOP
+            data = Uri.parse("takeabreak://notification/${state.sessionId}")
             putExtra(EXTRA_SESSION_ID, state.sessionId)
         }
         val stopPending = PendingIntent.getBroadcast(
@@ -244,30 +201,26 @@ class AndroidReminderNotifier(private val context: Context) : ReminderNotifier {
         // 使用会话与 generation 生成唯一 tag，确保每轮到点提醒均能独立振动触发
         val tag = "phase_${sessionId}_${generation}"
 
-        // 清理旧的阶段提醒，防止表盘下拉通知栏堆积过时消息
-        synchronized(activeReminderTags) {
-            for (oldTag in activeReminderTags) {
-                notificationManager.cancel(oldTag, NOTIFICATION_ID_REMINDER)
-            }
-            activeReminderTags.clear()
-            activeReminderTags.add(tag)
-        }
-
-        // 触发硬件立即亮屏与强震动，避开 Wear OS / 三星手表息屏下的通知静默与抬腕延迟
-        wakeScreen()
-        triggerHaptic(phase)
+        // Query the system so notifications from an earlier process are removed too.
+        clearReminderNotifications()
 
         val builder = NotificationCompat.Builder(context, channelId)
+            .addExtras(Bundle().apply { putString(EXTRA_SESSION_ID, sessionId) })
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
             .setContentText(message)
             .setContentIntent(openPendingIntent)
-            .setFullScreenIntent(openPendingIntent, true)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 
+        if (canUseFullScreenIntent()) builder.setFullScreenIntent(openPendingIntent, true)
+        // Wear OS notification delivery can succeed without a motor request. Use the
+        // verified alarm vibration path after the engine has committed the new phase.
+        requestReminderVibration(vibration, phase).onFailure {
+            Log.w("ReminderVibration", "Phase vibration unavailable: phase=$phase", it)
+        }
         notificationManager.notify(tag, NOTIFICATION_ID_REMINDER, builder.build())
     }
 
@@ -283,6 +236,7 @@ class AndroidReminderNotifier(private val context: Context) : ReminderNotifier {
         )
 
         val builder = NotificationCompat.Builder(context, NotificationChannels.CHANNEL_ERROR_ID)
+            .addExtras(Bundle().apply { putString(EXTRA_SESSION_ID, sessionId) })
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("计时已暂停")
             .setContentText(message)
@@ -299,12 +253,6 @@ class AndroidReminderNotifier(private val context: Context) : ReminderNotifier {
 
     override fun clearReminderNotifications() {
         val nm = notificationManager ?: return
-        synchronized(activeReminderTags) {
-            for (tag in activeReminderTags) {
-                nm.cancel(tag, NOTIFICATION_ID_REMINDER)
-            }
-            activeReminderTags.clear()
-        }
         // 扫描已发布通知，清理历史提醒及错误通知，严格保护 NOTIFICATION_ID_STATUS (1001) 状态与表盘小图标
         runCatching {
             val activeNotifs = nm.activeNotifications
@@ -316,25 +264,47 @@ class AndroidReminderNotifier(private val context: Context) : ReminderNotifier {
         }
     }
 
+    override fun clearSessionNotifications(sessionId: String) {
+        val nm = notificationManager ?: return
+        runCatching {
+            for (notification in nm.activeNotifications) {
+                if (notification.notification.extras.getString(EXTRA_SESSION_ID) == sessionId ||
+                    notification.tag?.startsWith("phase_${sessionId}_") == true
+                ) {
+                    nm.cancel(notification.tag, notification.id)
+                }
+            }
+        }
+    }
+
     override fun clearAllNotifications() {
+        vibration.cancel()
         clearStatusNotification()
         clearReminderNotifications()
         notificationManager?.cancel(NOTIFICATION_ID_TEST)
     }
 
-    override fun sendTestReminder(phase: TimerPhase) {
-        if (notificationManager == null) return
+    override fun sendTestReminder(phase: TimerPhase): ReminderTestResult =
+        ReminderVibrationTest(object : ReminderTestDevice {
+            override fun blockedReason(phase: TimerPhase) = vibration.blockedReason(phase)
+            override fun hasVibrator() = vibration.hasVibrator()
+            override fun vibrate(phase: TimerPhase) = vibration.vibrate(phase)
+            override fun postSilentNotification(phase: TimerPhase) = postTestNotification(phase)
+        }).run(phase)
+
+    private fun postTestNotification(phase: TimerPhase) {
+        val manager = checkNotNull(notificationManager) { "无法访问系统通知服务" }
 
         val (channelId, title, message) = when (phase) {
             TimerPhase.BREAK -> Triple(
                 NotificationChannels.CHANNEL_BREAK_ID,
                 "【测试】该休息了",
-                "正在调用【休息开始】系统通知渠道执行振动"
+                "已请求休息振动自检，请以手表实际触感为准"
             )
             TimerPhase.WORK -> Triple(
                 NotificationChannels.CHANNEL_WORK_ID,
                 "【测试】休息结束",
-                "正在调用【工作开始】系统通知渠道执行振动"
+                "已请求工作振动自检，请以手表实际触感为准"
             )
         }
 
@@ -348,19 +318,18 @@ class AndroidReminderNotifier(private val context: Context) : ReminderNotifier {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        wakeScreen()
-        triggerHaptic(phase)
-
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
             .setContentText(message)
             .setContentIntent(openPendingIntent)
-            .setFullScreenIntent(openPendingIntent, true)
+            // The explicit motor test owns haptics; do not play a second channel vibration
+            // or navigate away from the test feedback with a full-screen notification.
+            .setSilent(true)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
 
-        notificationManager.notify(NOTIFICATION_ID_TEST, builder.build())
+        manager.notify(NOTIFICATION_ID_TEST, builder.build())
     }
 }

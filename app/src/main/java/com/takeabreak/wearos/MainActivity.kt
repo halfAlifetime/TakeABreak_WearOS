@@ -13,7 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
@@ -175,7 +175,7 @@ fun MainAppNavHost(
     onOpenSettingTarget: (SettingTarget) -> Unit
 ) {
     val navController = rememberSwipeDismissableNavController()
-    val timerState by viewModel.timerState.collectAsState()
+    val timerState by viewModel.timerState.collectAsStateWithLifecycle()
     val tickElapsed by viewModel.uiTickElapsed
     val permissionEvaluation by viewModel.permissionState
     val channelStatuses by viewModel.channelStatuses

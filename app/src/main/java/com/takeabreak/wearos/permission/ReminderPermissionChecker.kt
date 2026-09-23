@@ -211,7 +211,7 @@ object ReminderPermissionChecker {
             !breakVibrate || !workVibrate -> "通知渠道振动未开启，将无触感提醒"
             !statusChannelReady -> "状态通知渠道被关闭，表盘持续活动小图标将无法显示"
             isDndSuppressed -> "手表当前处于全禁勿扰模式，所有提醒可能被静音"
-            else -> "系统调度、通知权限与触感振动已就绪"
+            else -> "调度与通知配置已就绪，请通过振动自检确认实际触感"
         }
 
         return PermissionEvaluation(

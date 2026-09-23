@@ -29,7 +29,11 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
         debug {
-            applicationIdSuffix = ""
+            // Install beside an existing build signed by a different development key.
+            if (providers.gradleProperty("isolatedDebug").orNull == "true") {
+                applicationIdSuffix = ".debug"
+                resValue("string", "app_name", "休息一下·调试")
+            }
             isDebuggable = true
         }
     }
@@ -70,6 +74,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.6")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.6")
 
     // Compose Foundation & UI

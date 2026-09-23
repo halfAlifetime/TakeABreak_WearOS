@@ -34,15 +34,6 @@ class AlarmReceiver : BroadcastReceiver() {
             acquire(5000L)
         }
 
-        @Suppress("DEPRECATION")
-        val screenWakeLock = powerManager?.newWakeLock(
-            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
-            "TakeABreak:AlarmScreenWakeLock"
-        )?.apply {
-            setReferenceCounted(false)
-            acquire(5000L)
-        }
-
         val pendingResult = goAsync()
 
         CoroutineScope(Dispatchers.Default).launch {
@@ -59,12 +50,6 @@ class AlarmReceiver : BroadcastReceiver() {
                 try {
                     if (wakeLock?.isHeld == true) {
                         wakeLock.release()
-                    }
-                } catch (_: Exception) {
-                }
-                try {
-                    if (screenWakeLock?.isHeld == true) {
-                        screenWakeLock.release()
                     }
                 } catch (_: Exception) {
                 }

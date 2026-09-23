@@ -9,6 +9,7 @@ import com.takeabreak.wearos.notification.ReminderNotifier
 import com.takeabreak.wearos.timer.ClockProvider
 import com.takeabreak.wearos.timer.DataStoreTimerRepository
 import com.takeabreak.wearos.timer.SystemClockProvider
+import com.takeabreak.wearos.timer.SharedPreferencesStopIntentStore
 import com.takeabreak.wearos.timer.TimerEngine
 import com.takeabreak.wearos.timer.TimerRepository
 
@@ -38,7 +39,7 @@ class TakeABreakApplication : Application() {
         super.onCreate()
         instance = this
 
-        clockProvider = SystemClockProvider()
+        clockProvider = SystemClockProvider(this)
         timerRepository = DataStoreTimerRepository(this)
         alarmScheduler = AndroidAlarmScheduler(this, clockProvider)
         reminderNotifier = AndroidReminderNotifier(this)
@@ -47,7 +48,8 @@ class TakeABreakApplication : Application() {
             repository = timerRepository,
             scheduler = alarmScheduler,
             notifier = reminderNotifier,
-            clockProvider = clockProvider
+            clockProvider = clockProvider,
+            stopIntentStore = SharedPreferencesStopIntentStore(this)
         )
 
         // 初始化 Wear OS 系统通知渠道

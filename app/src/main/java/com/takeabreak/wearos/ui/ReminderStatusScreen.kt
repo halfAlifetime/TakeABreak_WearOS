@@ -1,8 +1,8 @@
-package com.takeabreak.wearos.ui
+﻿package com.takeabreak.wearos.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -57,9 +57,9 @@ fun ReminderStatusScreen(
     ScalingLazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(DarkBackground)
-            .padding(horizontal = 10.dp),
+            .background(DarkBackground),
         state = listState,
+        contentPadding = PaddingValues(top = 28.dp, bottom = 96.dp, start = 12.dp, end = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         item {
@@ -70,26 +70,6 @@ fun ReminderStatusScreen(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
             )
-        }
-
-        if (actionFeedback != null) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.9f)
-                        .background(WorkBluePrimary.copy(alpha = 0.2f))
-                        .padding(4.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = actionFeedback,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = WorkBluePrimary,
-                        fontSize = 10.sp,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
         }
 
         // 核心权限检查项
@@ -233,7 +213,7 @@ fun ReminderStatusScreen(
             }
         }
 
-        // 测试按钮 (调用真实系统通知渠道触发原生振动，不影响当前会话)
+        // Manual previews use the same vibration path as committed phase transitions.
         item {
             Column(
                 modifier = Modifier
@@ -253,7 +233,7 @@ fun ReminderStatusScreen(
                     )
                 ) {
                     Text(
-                        text = "试一下：开始休息提醒",
+                        text = "测试休息振动",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold
                     )
@@ -271,12 +251,63 @@ fun ReminderStatusScreen(
                     )
                 ) {
                     Text(
-                        text = "试一下：开始工作提醒",
+                        text = "测试工作振动",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold
                     )
                 }
             }
+        }
+
+        item {
+            Text(
+                text = "自检与到点提醒使用相同振动节奏；请确认实际触感",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary,
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(0.9f)
+            )
+        }
+        if (actionFeedback != null) {
+            item {
+                Text(
+                    text = actionFeedback,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextPrimary,
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(0.9f)
+                        .background(WorkBluePrimary.copy(alpha = 0.2f)).padding(6.dp)
+                )
+            }
+        }
+
+        // 返回按钮
+        item {
+            Spacer(modifier = Modifier.height(6.dp))
+            Button(
+                onClick = onBack,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                modifier = Modifier
+                    .fillMaxWidth(0.72f)
+                    .height(40.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.White.copy(alpha = 0.18f),
+                    contentColor = TextPrimary
+                )
+            ) {
+                Text(
+                    text = "返回",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(40.dp))
         }
     }
 }

@@ -1,16 +1,16 @@
-package com.takeabreak.wearos.ui
+﻿package com.takeabreak.wearos.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -32,7 +32,6 @@ import com.takeabreak.wearos.timer.TimerState
 import com.takeabreak.wearos.timer.TimerStatus
 import com.takeabreak.wearos.ui.theme.DarkBackground
 import com.takeabreak.wearos.ui.theme.SurfaceDark
-import com.takeabreak.wearos.ui.theme.TextMuted
 import com.takeabreak.wearos.ui.theme.TextPrimary
 import com.takeabreak.wearos.ui.theme.TextSecondary
 import com.takeabreak.wearos.ui.theme.WarningRed
@@ -54,9 +53,9 @@ fun SettingsScreen(
     ScalingLazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(DarkBackground)
-            .padding(horizontal = 14.dp),
+            .background(DarkBackground),
         state = listState,
+        contentPadding = PaddingValues(top = 28.dp, bottom = 96.dp, start = 14.dp, end = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         item {
@@ -65,7 +64,7 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.titleMedium,
                 color = TextPrimary,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
+                modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)
             )
         }
 
@@ -97,7 +96,7 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
                     .background(SurfaceDark)
-                    .padding(vertical = 8.dp, horizontal = 6.dp),
+                    .padding(vertical = 8.dp, horizontal = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
@@ -116,8 +115,9 @@ fun SettingsScreen(
                         FilledTonalButton(
                             onClick = { if (isStopped) onSetWorkDuration(minutes) },
                             enabled = isStopped,
+                            contentPadding = PaddingValues(0.dp),
                             modifier = Modifier
-                                .padding(horizontal = 3.dp)
+                                .padding(horizontal = 2.dp)
                                 .weight(1f)
                                 .height(36.dp),
                             colors = ButtonDefaults.filledTonalButtonColors(
@@ -128,7 +128,9 @@ fun SettingsScreen(
                             Text(
                                 text = "${minutes}分",
                                 fontSize = 12.sp,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                maxLines = 1,
+                                textAlign = TextAlign.Center
                             )
                         }
                     }
@@ -143,7 +145,7 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
                     .background(SurfaceDark)
-                    .padding(vertical = 8.dp, horizontal = 6.dp),
+                    .padding(vertical = 8.dp, horizontal = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
@@ -162,8 +164,9 @@ fun SettingsScreen(
                         FilledTonalButton(
                             onClick = { if (isStopped) onSetBreakDuration(minutes) },
                             enabled = isStopped,
+                            contentPadding = PaddingValues(0.dp),
                             modifier = Modifier
-                                .padding(horizontal = 3.dp)
+                                .padding(horizontal = 2.dp)
                                 .weight(1f)
                                 .height(36.dp),
                             colors = ButtonDefaults.filledTonalButtonColors(
@@ -174,7 +177,9 @@ fun SettingsScreen(
                             Text(
                                 text = "${minutes}分",
                                 fontSize = 12.sp,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                maxLines = 1,
+                                textAlign = TextAlign.Center
                             )
                         }
                     }
@@ -186,6 +191,7 @@ fun SettingsScreen(
         item {
             FilledTonalButton(
                 onClick = onOpenReminderStatus,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(44.dp)
@@ -198,7 +204,9 @@ fun SettingsScreen(
                 Text(
                     text = "提醒与权限诊断",
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    textAlign = TextAlign.Center
                 )
             }
         }
@@ -207,6 +215,7 @@ fun SettingsScreen(
         item {
             FilledTonalButton(
                 onClick = onOpenSystemNotificationSettings,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(44.dp)
@@ -218,29 +227,38 @@ fun SettingsScreen(
             ) {
                 Text(
                     text = "手表通知设置",
-                    fontSize = 12.sp
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    textAlign = TextAlign.Center
                 )
             }
         }
 
-        // 返回
+        // 返回按钮
         item {
-            FilledTonalButton(
+            Spacer(modifier = Modifier.height(4.dp))
+            Button(
                 onClick = onBack,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                 modifier = Modifier
-                    .fillMaxWidth(0.6f)
-                    .height(36.dp)
-                    .padding(top = 4.dp, bottom = 12.dp),
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = Color.White.copy(alpha = 0.12f),
-                    contentColor = TextSecondary
+                    .fillMaxWidth(0.72f)
+                    .height(40.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.White.copy(alpha = 0.18f),
+                    contentColor = TextPrimary
                 )
             ) {
                 Text(
                     text = "返回",
-                    fontSize = 12.sp
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center
                 )
             }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(40.dp))
         }
     }
 }

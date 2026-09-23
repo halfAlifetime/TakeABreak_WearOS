@@ -9,6 +9,7 @@ import com.takeabreak.wearos.timer.TimerEngine
 import com.takeabreak.wearos.timer.TimerPhase
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 
@@ -26,7 +27,7 @@ class SessionValidationTest {
         repo = FakeTimerRepository()
         scheduler = FakeAlarmScheduler()
         notifier = FakeReminderNotifier()
-        engine = TimerEngine(repo, scheduler, notifier, clock)
+        engine = TimerEngine(repo, scheduler, notifier, clock, com.takeabreak.wearos.timer.FakeStopIntentStore())
     }
 
     @Test
@@ -59,9 +60,12 @@ class SessionValidationTest {
             round = 1
         )
 
-        assertTrue(result is PhaseTransitionResult.Ignored)
-        // 确保依然停留在 WORK 阶段
+        assertTrue(result is PhaseTransitionResult.PrematureHandled)
+        assertEquals(2, scheduler.scheduledStates.size)
+        assertEquals(state, scheduler.activeAlarms[state.generation])
+        assertTrue(notifier.phaseReminders.isEmpty())
+        // 确保依然停留在 WORK 阶段，原截止时间不被推迟
         val currentState = repo.getTimerState()
-        assertTrue(currentState.phase == TimerPhase.WORK)
+        assertEquals(state, currentState)
     }
 }

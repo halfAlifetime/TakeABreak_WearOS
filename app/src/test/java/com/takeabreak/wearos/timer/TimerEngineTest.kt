@@ -2,6 +2,7 @@ package com.takeabreak.wearos.timer
 
 import com.takeabreak.wearos.alarm.AlarmScheduler
 import com.takeabreak.wearos.notification.ReminderNotifier
+import com.takeabreak.wearos.notification.ReminderTestResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
@@ -15,8 +16,10 @@ class FakeClockProvider(
     var elapsed: Long = 100000L,
     var wall: Long = 1700000000000L
 ) : ClockProvider {
+    var boot: Int? = null
     override fun elapsedRealtime(): Long = elapsed
     override fun currentTimeMillis(): Long = wall
+    override fun bootCount(): Int? = boot
 
     fun advance(ms: Long) {
         elapsed += ms
@@ -27,11 +30,17 @@ class FakeClockProvider(
 class FakeTimerRepository : TimerRepository {
     private val stateFlow = MutableStateFlow(TimerState())
     var failWrites: Boolean = false
+    var failReads: Boolean = false
+    var beforeUpdate: (suspend () -> Unit)? = null
     override val timerStateFlow: Flow<TimerState> = stateFlow
 
-    override suspend fun getTimerState(): TimerState = stateFlow.value
+    override suspend fun getTimerState(): TimerState {
+        if (failReads) throw java.io.IOException("Fake storage read failure")
+        return stateFlow.value
+    }
 
     override suspend fun updateTimerState(transform: (TimerState) -> TimerState): TimerState {
+        beforeUpdate?.invoke()
         if (failWrites) {
             throw java.io.IOException("Fake storage write failure")
         }
@@ -48,11 +57,39 @@ class FakeTimerRepository : TimerRepository {
     }
 }
 
+class FakeStopIntentStore : StopIntentStore {
+    var generation: Long = -1L
+    var allowedSessionId: String? = null
+    var failWrites = false
+    var failAllowStart = false
+    val stoppedSessions = mutableSetOf<String>()
+    override fun stoppedThroughGeneration(): Long = generation
+    override fun isRecoveryBlocked(sessionId: String): Boolean =
+        sessionId in stoppedSessions || (allowedSessionId?.let { it.isEmpty() || it != sessionId } ?: false)
+    override fun markStopped(generation: Long) {
+        if (failWrites) throw java.io.IOException("Fake journal failure")
+        this.generation = maxOf(this.generation, generation)
+        allowedSessionId = ""
+        stoppedSessions.clear()
+    }
+    override fun markSessionStopped(sessionId: String) {
+        if (failWrites) throw java.io.IOException("Fake journal failure")
+        stoppedSessions.add(sessionId)
+    }
+    override fun allowStartedSession(sessionId: String) {
+        if (failWrites || failAllowStart) throw java.io.IOException("Fake start authorization failure")
+        allowedSessionId = sessionId
+        stoppedSessions.clear()
+    }
+}
+
 class FakeAlarmScheduler : AlarmScheduler {
     var canSchedule = true
     var scheduledStates = mutableListOf<TimerState>()
     var cancelledGenerations = mutableListOf<Long>()
     var allAlarmsCancelledCount = 0
+    val activeAlarms = mutableMapOf<Long, TimerState>()
+    var knowsSessionIdentity = true
 
     override fun canScheduleExactAlarms(): Boolean = canSchedule
 
@@ -60,17 +97,29 @@ class FakeAlarmScheduler : AlarmScheduler {
         if (!canSchedule) return false
         if (previousGeneration != null) {
             cancelledGenerations.add(previousGeneration)
+            activeAlarms.remove(previousGeneration)
         }
         scheduledStates.add(state)
+        activeAlarms[state.generation] = state
         return true
     }
 
     override fun cancelPhaseAlarm(generation: Long) {
         cancelledGenerations.add(generation)
+        activeAlarms.remove(generation)
     }
 
     override fun cancelAllPhaseAlarms() {
         allAlarmsCancelledCount++
+        activeAlarms.clear()
+    }
+
+    override fun cancelSessionAlarms(sessionId: String) {
+        if (knowsSessionIdentity) {
+            activeAlarms.values.filter { it.sessionId == sessionId }.forEach {
+                cancelPhaseAlarm(it.generation)
+            }
+        }
     }
 }
 
@@ -78,6 +127,9 @@ class FakeReminderNotifier : ReminderNotifier {
     var statusShown: TimerState? = null
     val phaseReminders = mutableListOf<String>()
     val errorNotifications = mutableListOf<String>()
+    val clearedSessions = mutableListOf<String>()
+    private val phaseOwners = mutableMapOf<String, String>()
+    private val errorOwners = mutableMapOf<String, String>()
 
     override fun showStatusNotification(state: TimerState) {
         statusShown = state
@@ -90,11 +142,14 @@ class FakeReminderNotifier : ReminderNotifier {
         sessionId: String,
         generation: Long
     ) {
-        phaseReminders.add("$phase-$round-$durationMinutes-$generation")
+        val reminder = "$phase-$round-$durationMinutes-$generation"
+        phaseReminders.add(reminder)
+        phaseOwners[reminder] = sessionId
     }
 
     override fun showErrorNotification(message: String, sessionId: String) {
         errorNotifications.add(message)
+        errorOwners[message] = sessionId
     }
 
     override fun clearStatusNotification() {
@@ -104,15 +159,23 @@ class FakeReminderNotifier : ReminderNotifier {
     override fun clearReminderNotifications() {
         phaseReminders.clear()
         errorNotifications.clear()
+        phaseOwners.clear()
+        errorOwners.clear()
     }
 
     override fun clearAllNotifications() {
         statusShown = null
-        phaseReminders.clear()
-        errorNotifications.clear()
+        clearReminderNotifications()
     }
 
-    override fun sendTestReminder(phase: TimerPhase) {}
+    override fun clearSessionNotifications(sessionId: String) {
+        clearedSessions.add(sessionId)
+        if (statusShown?.sessionId == sessionId) statusShown = null
+        phaseReminders.removeAll { phaseOwners[it] == sessionId }
+        errorNotifications.removeAll { errorOwners[it] == sessionId }
+    }
+
+    override fun sendTestReminder(phase: TimerPhase) = ReminderTestResult("Test vibration requested", false)
 }
 
 class TimerEngineTest {
@@ -129,7 +192,7 @@ class TimerEngineTest {
         repo = FakeTimerRepository()
         scheduler = FakeAlarmScheduler()
         notifier = FakeReminderNotifier()
-        engine = TimerEngine(repo, scheduler, notifier, clock)
+        engine = TimerEngine(repo, scheduler, notifier, clock, com.takeabreak.wearos.timer.FakeStopIntentStore())
     }
 
     @Test
@@ -430,7 +493,7 @@ class TimerEngineTest {
 
         // 1. 错误的 sessionId 动作被拦截
         val invalidSessionResult = engine.handleNotificationAction(
-            action = "ACTION_PAUSE",
+            action = com.takeabreak.wearos.notification.NotificationActions.PAUSE,
             expectedSessionId = "stale-session-id"
         )
         assertTrue(invalidSessionResult.isFailure)
@@ -438,7 +501,7 @@ class TimerEngineTest {
 
         // 2. 正确的 sessionId 成功在锁内执行暂停
         val validPauseResult = engine.handleNotificationAction(
-            action = "ACTION_PAUSE",
+            action = com.takeabreak.wearos.notification.NotificationActions.PAUSE,
             expectedSessionId = runningState.sessionId
         )
         assertTrue(validPauseResult.isSuccess)
@@ -454,7 +517,7 @@ class TimerEngineTest {
 
         // 模拟通知点击“继续”，但权限检查被阻止
         val blockedResult = engine.handleNotificationAction(
-            action = "ACTION_RESUME",
+            action = com.takeabreak.wearos.notification.NotificationActions.RESUME,
             expectedSessionId = pausedState.sessionId,
             preflightChecker = {
                 com.takeabreak.wearos.permission.PreflightCheckResult.Blocked(

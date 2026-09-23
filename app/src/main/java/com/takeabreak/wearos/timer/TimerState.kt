@@ -25,6 +25,7 @@ data class TimerState(
     val deadlineWallClockMs: Long = 0L,
     val pausedRemainingMs: Long = 0L,
     val bootIdentifier: Long = 0L,
+    val bootCount: Int? = null,
     val lastEventId: String = "",
     val lastEventResult: String = "",
     val lastEventTimestampMs: Long = 0L,

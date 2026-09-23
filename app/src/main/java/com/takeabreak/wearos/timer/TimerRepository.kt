@@ -36,6 +36,7 @@ class DataStoreTimerRepository(private val context: Context) : TimerRepository {
         val DEADLINE_WALL_MS = longPreferencesKey("deadline_wall_ms")
         val PAUSED_REMAINING_MS = longPreferencesKey("paused_remaining_ms")
         val BOOT_IDENTIFIER = longPreferencesKey("boot_identifier")
+        val BOOT_COUNT = intPreferencesKey("boot_count")
         val LAST_EVENT_ID = stringPreferencesKey("last_event_id")
         val LAST_EVENT_RESULT = stringPreferencesKey("last_event_result")
         val LAST_EVENT_TIMESTAMP_MS = longPreferencesKey("last_event_timestamp_ms")
@@ -68,6 +69,8 @@ class DataStoreTimerRepository(private val context: Context) : TimerRepository {
             prefs[PreferencesKeys.DEADLINE_WALL_MS] = updatedState.deadlineWallClockMs
             prefs[PreferencesKeys.PAUSED_REMAINING_MS] = updatedState.pausedRemainingMs
             prefs[PreferencesKeys.BOOT_IDENTIFIER] = updatedState.bootIdentifier
+            updatedState.bootCount?.let { prefs[PreferencesKeys.BOOT_COUNT] = it }
+                ?: prefs.remove(PreferencesKeys.BOOT_COUNT)
             prefs[PreferencesKeys.LAST_EVENT_ID] = updatedState.lastEventId
             prefs[PreferencesKeys.LAST_EVENT_RESULT] = updatedState.lastEventResult
             prefs[PreferencesKeys.LAST_EVENT_TIMESTAMP_MS] = updatedState.lastEventTimestampMs
@@ -106,6 +109,7 @@ class DataStoreTimerRepository(private val context: Context) : TimerRepository {
             deadlineWallClockMs = prefs[PreferencesKeys.DEADLINE_WALL_MS] ?: 0L,
             pausedRemainingMs = prefs[PreferencesKeys.PAUSED_REMAINING_MS] ?: 0L,
             bootIdentifier = prefs[PreferencesKeys.BOOT_IDENTIFIER] ?: 0L,
+            bootCount = prefs[PreferencesKeys.BOOT_COUNT],
             lastEventId = prefs[PreferencesKeys.LAST_EVENT_ID] ?: "",
             lastEventResult = prefs[PreferencesKeys.LAST_EVENT_RESULT] ?: "",
             lastEventTimestampMs = prefs[PreferencesKeys.LAST_EVENT_TIMESTAMP_MS] ?: 0L,

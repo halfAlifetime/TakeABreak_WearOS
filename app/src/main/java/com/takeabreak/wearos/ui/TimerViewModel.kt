@@ -263,19 +263,19 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun testBreakReminder() {
-        app.reminderNotifier.sendTestReminder(TimerPhase.BREAK)
-        _feedback.value = ActionFeedback(
-            message = "已提交【休息开始】系统渠道提醒请求",
-            type = FeedbackType.INFO,
-            settingTarget = SettingTarget.NONE
-        )
+        testReminder(TimerPhase.BREAK)
     }
 
     fun testWorkReminder() {
-        app.reminderNotifier.sendTestReminder(TimerPhase.WORK)
+        testReminder(TimerPhase.WORK)
+    }
+
+    private fun testReminder(phase: TimerPhase) {
+        refreshPermissions()
+        val result = app.reminderNotifier.sendTestReminder(phase)
         _feedback.value = ActionFeedback(
-            message = "已提交【工作开始】系统渠道提醒请求",
-            type = FeedbackType.INFO,
+            message = result.message,
+            type = if (result.isError) FeedbackType.ERROR else FeedbackType.INFO,
             settingTarget = SettingTarget.NONE
         )
     }

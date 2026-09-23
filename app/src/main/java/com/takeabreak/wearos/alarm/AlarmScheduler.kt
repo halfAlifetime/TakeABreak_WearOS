@@ -13,6 +13,7 @@ interface AlarmScheduler {
     fun canScheduleExactAlarms(): Boolean
     fun schedulePhaseAlarm(state: TimerState, previousGeneration: Long? = null): Boolean
     fun cancelPhaseAlarm(generation: Long)
+    fun cancelSessionAlarms(sessionId: String)
     fun cancelAllPhaseAlarms()
 }
 
@@ -31,6 +32,7 @@ class AndroidAlarmScheduler(
         private const val REQUEST_CODE_BASE = 10000
         private const val PREFS_NAME = "take_a_break_alarm_scheduler"
         private const val KEY_LAST_SCHEDULED_GEN = "last_scheduled_generation"
+        private const val KEY_LAST_SCHEDULED_SESSION = "last_scheduled_session"
     }
 
     private val alarmManager: AlarmManager? =
@@ -46,7 +48,10 @@ class AndroidAlarmScheduler(
         set(value) {
             prefs.edit().apply {
                 if (value != null) putLong(KEY_LAST_SCHEDULED_GEN, value)
-                else remove(KEY_LAST_SCHEDULED_GEN)
+                else {
+                    remove(KEY_LAST_SCHEDULED_GEN)
+                    remove(KEY_LAST_SCHEDULED_SESSION)
+                }
             }.apply()
         }
 
@@ -136,7 +141,10 @@ class AndroidAlarmScheduler(
                     alarmPendingIntent
                 )
             }
-            lastScheduledGeneration = state.generation
+            prefs.edit()
+                .putLong(KEY_LAST_SCHEDULED_GEN, state.generation)
+                .putString(KEY_LAST_SCHEDULED_SESSION, state.sessionId)
+                .apply()
             true
         } catch (e: Exception) {
             false
@@ -161,6 +169,13 @@ class AndroidAlarmScheduler(
         }
         if (lastScheduledGeneration == generation) {
             lastScheduledGeneration = null
+        }
+    }
+
+    override fun cancelSessionAlarms(sessionId: String) {
+        // A stale notification must not cancel the alarm owned by a newer session.
+        if (prefs.getString(KEY_LAST_SCHEDULED_SESSION, null) == sessionId) {
+            lastScheduledGeneration?.let { cancelPhaseAlarm(it) }
         }
     }
 

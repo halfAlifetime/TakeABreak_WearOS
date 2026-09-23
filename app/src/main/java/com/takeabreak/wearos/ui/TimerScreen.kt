@@ -64,6 +64,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.FilledTonalButton
@@ -149,30 +154,40 @@ fun TimerScreen(
         label = "liquid_glow_color"
     )
 
-    // 真实水波动态相位：无限平滑循环驱动波浪起伏流动
-    val infiniteTransition = rememberInfiniteTransition(label = "wave_motion")
-    val wavePhase1 by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 3200, easing = LinearEasing)
-        ),
-        label = "wave_phase_1"
-    )
-    val wavePhase2 by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 4600, easing = LinearEasing)
-        ),
-        label = "wave_phase_2"
-    )
+    // Only animate a running timer while the screen is interactive.
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val (wavePhase1, wavePhase2) = if (
+        state.status == TimerStatus.RUNNING && lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
+    ) {
+        val infiniteTransition = rememberInfiniteTransition(label = "wave_motion")
+        val wavePhase1 by infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = (2 * PI).toFloat(),
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 3200, easing = LinearEasing)
+            ),
+            label = "wave_phase_1"
+        )
+        val wavePhase2 by infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = (2 * PI).toFloat(),
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 4600, easing = LinearEasing)
+            ),
+            label = "wave_phase_2"
+        )
+        wavePhase1 to wavePhase2
+    } else {
+        0f to 0f
+    }
 
-    // 水波液面高度：随倒计时平稳升降，在底部约 20%~42% 之间展现通透水面
+    // 水波液面高度：水波沙漏随时间流逝逐渐填满（从底部 10% 慢慢上升填满到 95%）
+    // animatedProgress 从 1.0f -> 0.0f；已耗时进度 elapsedRatio 为 (1f - animatedProgress) 从 0.0f -> 1.0f
+    val elapsedRatio = (1f - animatedProgress).coerceIn(0f, 1f)
     val liquidHeightRatio = when (state.status) {
-        TimerStatus.RUNNING, TimerStatus.PAUSED -> 0.22f + (1f - animatedProgress) * 0.18f
-        TimerStatus.STOPPED -> 0.22f
-        TimerStatus.ERROR -> 0.18f
+        TimerStatus.RUNNING, TimerStatus.PAUSED -> 0.10f + elapsedRatio * 0.85f
+        TimerStatus.STOPPED -> 0.12f
+        TimerStatus.ERROR -> 0.10f
     }
 
     Box(
@@ -324,71 +339,73 @@ fun TimerScreen(
                 FeedbackType.INFO -> FocusMintText
             }
 
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.92f))
-                    .padding(20.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+            TimerModal(onDismissRequest = onClearActionMessage) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.92f))
+                        .padding(20.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = titleText,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = titleColor
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = effectiveFeedback.message,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextPrimary,
-                        textAlign = TextAlign.Center,
-                        maxLines = 3
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
-                        if (effectiveFeedback.settingTarget != SettingTarget.NONE) {
-                            Button(
-                                onClick = {
-                                    onOpenSettingTarget(effectiveFeedback.settingTarget)
-                                    onClearActionMessage()
-                                },
+                        Text(
+                            text = titleText,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = titleColor
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = effectiveFeedback.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextPrimary,
+                            textAlign = TextAlign.Center,
+                            maxLines = 3
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (effectiveFeedback.settingTarget != SettingTarget.NONE) {
+                                Button(
+                                    onClick = {
+                                        onOpenSettingTarget(effectiveFeedback.settingTarget)
+                                        onClearActionMessage()
+                                    },
+                                    modifier = Modifier
+                                        .height(36.dp)
+                                        .padding(horizontal = 4.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = FocusMintPrimary,
+                                        contentColor = DarkBackground
+                                    )
+                                ) {
+                                    Text(
+                                        text = "去设置",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                            FilledTonalButton(
+                                onClick = onClearActionMessage,
                                 modifier = Modifier
                                     .height(36.dp)
                                     .padding(horizontal = 4.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = FocusMintPrimary,
-                                    contentColor = DarkBackground
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = Color.White.copy(alpha = 0.16f),
+                                    contentColor = TextPrimary
                                 )
                             ) {
                                 Text(
-                                    text = "去设置",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold
+                                    text = "好",
+                                    style = MaterialTheme.typography.labelSmall
                                 )
                             }
-                        }
-                        FilledTonalButton(
-                            onClick = onClearActionMessage,
-                            modifier = Modifier
-                                .height(36.dp)
-                                .padding(horizontal = 4.dp),
-                            colors = ButtonDefaults.filledTonalButtonColors(
-                                containerColor = Color.White.copy(alpha = 0.16f),
-                                contentColor = TextPrimary
-                            )
-                        ) {
-                            Text(
-                                text = "好",
-                                style = MaterialTheme.typography.labelSmall
-                            )
                         }
                     }
                 }
@@ -704,7 +721,7 @@ private fun StoppedZenView(
                 letterSpacing = 1.5.sp
             )
             Text(
-                text = "休息  分钟",
+                text = "休息 %d分钟".format(breakMin),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Normal,
                 color = FocusMintText,
@@ -818,72 +835,87 @@ private fun StopConfirmOverlay(
     onConfirm: () -> Unit,
     onCancel: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.94f))
-            .padding(16.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+    TimerModal(onDismissRequest = onCancel) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.94f))
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "结束计时",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = WarningRed
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = "确认提前结束本次专注吗？",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                FilledTonalButton(
-                    onClick = onCancel,
-                    modifier = Modifier
-                        .width(66.dp)
-                        .height(36.dp),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = Color.White.copy(alpha = 0.15f),
-                        contentColor = TextPrimary
-                    )
-                ) {
-                    Text(
-                        text = "取消",
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
+                Text(
+                    text = "结束计时",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = WarningRed
+                )
 
-                Button(
-                    onClick = onConfirm,
-                    modifier = Modifier
-                        .width(66.dp)
-                        .height(36.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = WarningRed,
-                        contentColor = TextPrimary
-                    )
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = "确认提前结束本次专注吗？",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "结束",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold
-                    )
+                    FilledTonalButton(
+                        onClick = onCancel,
+                        modifier = Modifier
+                            .width(66.dp)
+                            .height(36.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = Color.White.copy(alpha = 0.15f),
+                            contentColor = TextPrimary
+                        )
+                    ) {
+                        Text(
+                            text = "取消",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+
+                    Button(
+                        onClick = onConfirm,
+                        modifier = Modifier
+                            .width(66.dp)
+                            .height(36.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = WarningRed,
+                            contentColor = TextPrimary
+                        )
+                    ) {
+                        Text(
+                            text = "结束",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+
+@Composable
+private fun TimerModal(onDismissRequest: () -> Unit, content: @Composable () -> Unit) {
+    Dialog(
+        onDismissRequest = onDismissRequest,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        ),
+        content = content
+    )
 }
