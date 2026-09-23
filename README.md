@@ -2,7 +2,7 @@
 
 独立手表循环计时应用，默认工作 60 分钟、休息 5 分钟。工作结束进入同轮休息，休息结束进入下一轮工作，直至用户停止。
 
-工程：`C:/php/3/TakeABreak_WearOS`。版本：`2.2.0` / `versionCode 5`。当前源码已修复平台异常中断状态提交、首次加载误启动问题，并将通知协议解码移至通知入口。本次修复尚未安装到手表；此前 `b9597c4` 版本的手动及两次自动振动已获用户触感确认，详见设备记录。
+工程：`C:/php/3/TakeABreak_WearOS`。版本：`2.2.0` / `versionCode 5`。当前源码在平台异常与首次加载修复的基础上，补齐设置保存错误的展示与清除、反馈关闭的 ID 校验，以及 Android 通知清理失败日志。本次修复尚未安装到手表；此前 `b9597c4` 版本的手动及两次自动振动已获用户触感确认，详见设备记录。
 
 ## 设计与模块职责
 
@@ -32,7 +32,7 @@
 | `ui/TimerViewModel.kt`、`TimerViewModelFactory.kt` | 显式注入依赖；只读状态中 null 表示加载中，加载完成前不执行计时修改 |
 | `ui/TimerScreen.kt`、`TimerContent.kt` | 页面组合与四种状态内容 |
 | `ui/TimerWaterBackground.kt`、`TimerControls.kt`、`TimerDialogs.kt` | 水波、按钮、类型化反馈与模态停止确认 |
-| `ui/SettingsScreen.kt`、`ReminderStatusScreen.kt`、`ActionFeedback.kt` | 时长设置、能力诊断及自检反馈 |
+| `ui/SettingsScreen.kt`、`ReminderStatusScreen.kt`、`ActionFeedback.kt` | 时长设置及保存错误、能力诊断及自检反馈；反馈按操作来源分发、按 ID 关闭 |
 
 测试位于 `app/src/test/java/com/takeabreak/wearos`。共用 Fake 在 `timer/support/TimerFakes.kt`，能力夹具在 `permission/support/CapabilityFixtures.kt`；ViewModel 行为测试不需要真实 Application。
 
@@ -46,6 +46,8 @@
 - 独立停止记录优先于旧 RUNNING 快照。主状态与停止记录都写失败时返回失败，不能承诺跨进程保存停止意图。
 - 同次开机使用 elapsedRealtime，真实重启才按墙钟恢复；过期阶段暂停等待确认，不追赶全部错过的阶段。
 - UI 只提交改变的时长字段。引擎获锁后合并最新状态，仅允许 STOPPED 修改；保存失败不发布未保存值。
+- ViewModel 维护最新一条带来源和递增 ID 的反馈。时长保存失败在设置页显示并滚动定位，保存成功仅清除对应字段的错误；计时反馈与自检反馈分别由计时页和诊断页展示。关闭反馈按 ID 匹配，“去设置”先关闭原提示再跳转，跳转失败的新提示得以保留。
+- Android 通知清理捕获普通异常后写入 `ReminderNotifier` 日志，定向清理包含会话 ID；历史提醒清理失败后仍尝试新阶段的振动和通知，取消异常继续传播。
 - 首次加载显示“正在读取计时…”且不展示操作按钮，不再用默认 STOPPED 占位。开始命令不能覆盖已知 PAUSED/ERROR；RUNNING 保持幂等。读取失败时，仅此前已有明确通知停止请求的恢复路径允许显式开始新会话，保留旧停止保护行为。
 - Ongoing Activity 只在 RUNNING 状态通知中附加。表盘入口或通知点击仅导航，不重新开始、恢复或重置计时。
 
@@ -86,10 +88,10 @@ $env:PATH = $env:PATH.Replace('"', '')
 
 `-PisolatedDebug=true` 产出 `com.takeabreak.wearos.debug` / “休息一下·调试”，与原应用并存。APK：`app/build/outputs/apk/debug/app-debug.apk`；不传参数则使用原包名。构建产物不进入 Git。
 
-本次本地验证：174 项测试通过（0 失败、0 错误、0 跳过），调试 APK 构建成功，Lint 0 错误、34 警告。验证日志为 `app/build/review-principles/final-validation.log`。阶段提交及后续修正见 [实施记录](./IMPLEMENTATION_PLAN.md)。测试报告：`app/build/reports/tests/testDebugUnitTest/index.html`；Lint：`app/build/reports/lint-results-debug.html`。这些文件可能被后续构建覆盖或清理。
+本次本地验证：181 项测试通过（0 失败、0 错误、0 跳过），调试 APK 构建成功，Lint 0 错误、34 警告，警告分类与此前一致。验证日志为 `app/build/feedback-review/final-validation.log`。阶段提交及后续修正见 [实施记录](./IMPLEMENTATION_PLAN.md)。测试报告：`app/build/reports/tests/testDebugUnitTest/index.html`；Lint：`app/build/reports/lint-results-debug.html`。这些文件可能被后续构建覆盖或清理。
 
 新增验证包括策略矩阵、确定性时长竞态、纯恢复规则、真实文件 DataStore 的保存关闭重开，以及 ViewModel 行为。原 67 项恢复、取消、会话隔离和振动回归保留；自检测试从 `ReminderVibrationTestTest` 更名为 `ReminderSelfTestBehaviorTest`，未删除原断言。
 
-本次保留此前全部 166 项测试，新增 `TimerPlatformFailureTest` 7 项和 `TimerLoadingTest` 1 项。三个核心回归在修复前均失败，修复后通过；补充覆盖取消闹钟与保存同时失败后的停止恢复、各调度入口异常、通知发布失败后的已提交状态、ERROR 手动重试及未知会话开始限制。
+本次保留此前全部 174 项测试，在 `TimerViewModelTest` 新增 7 项反馈回归：工作/休息保存后清除旧错误、两个字段互不误清除、延迟保存保留新自检反馈、旧关闭动作保留设置跳转失败、重复文案按不同 ID 消费。其中保存后残留与跳转失败被清除的 3 个用例在修复前均失败，证据为 `app/build/feedback-review/before-fix.log`。通知清理日志和设置页接线已完成代码检查、编译与 Lint；新增错误卡片的圆屏外观及真实系统清理异常尚未在设备验证。
 
 此前 `b9597c4` 已验证手动及真实后台两次自动振动、升级保留会话、PRIORITY 勿扰阻断、暂停/继续、模态输入隔离、旧会话停止隔离与时长设置。最后的 ERROR 界面夹具、最终停止清理及通知冷停止检查因无线连接中断未获完整记录。本次没有连接设备，不能将上述历史结果当作当前修复版本的真机验收。其他未覆盖条件及证据见 [设备记录](./DEVICE_DEBUG_REPORT.md)；当前状态与历史分析分开记录于 [程序分析](./PROGRAM_ANALYSIS.md)。

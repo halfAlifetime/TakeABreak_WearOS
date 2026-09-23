@@ -17,6 +17,7 @@ import com.takeabreak.wearos.R
 import com.takeabreak.wearos.timer.TimerPhase
 import com.takeabreak.wearos.timer.TimerState
 import com.takeabreak.wearos.timer.TimerStatus
+import kotlinx.coroutines.CancellationException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -237,19 +238,24 @@ class AndroidReminderNotifier(
     override fun clearReminderNotifications() {
         val nm = notificationManager ?: return
         // 扫描已发布通知，清理历史提醒及错误通知，严格保护 NOTIFICATION_ID_STATUS (1001) 状态与表盘小图标
-        runCatching {
+        // Cleanup is best effort: failure must not skip the next phase's vibration.
+        try {
             val activeNotifs = nm.activeNotifications
             for (sbn in activeNotifs) {
                 if (sbn.id == NOTIFICATION_ID_REMINDER || sbn.id == NOTIFICATION_ID_ERROR || sbn.tag?.startsWith("phase_") == true) {
                     nm.cancel(sbn.tag, sbn.id)
                 }
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w("ReminderNotifier", "Failed to clear reminder notifications", error)
         }
     }
 
     override fun clearSessionNotifications(sessionId: String) {
         val nm = notificationManager ?: return
-        runCatching {
+        try {
             for (notification in nm.activeNotifications) {
                 if (notification.notification.extras.getString(NotificationActions.EXTRA_SESSION_ID) == sessionId ||
                     notification.tag?.startsWith("phase_${sessionId}_") == true
@@ -257,6 +263,10 @@ class AndroidReminderNotifier(
                     nm.cancel(notification.tag, notification.id)
                 }
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w("ReminderNotifier", "Failed to clear session notifications: session=$sessionId", error)
         }
     }
 

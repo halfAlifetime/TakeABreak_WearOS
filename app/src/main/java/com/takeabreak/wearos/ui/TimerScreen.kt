@@ -22,7 +22,7 @@ fun TimerScreen(
     onResume: () -> Unit,
     onRetry: () -> Unit,
     onStop: () -> Unit,
-    onClearFeedback: () -> Unit = {},
+    onClearFeedback: (Long) -> Unit = {},
     onOpenSettingTarget: (SettingTarget) -> Unit = {},
     onOpenSettings: () -> Unit
 ) {

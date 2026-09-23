@@ -36,7 +36,7 @@ import com.takeabreak.wearos.ui.theme.WarningRed
 @Composable
 internal fun TimerFeedbackDialog(
     feedback: ActionFeedback,
-    onDismiss: () -> Unit,
+    onDismiss: (Long) -> Unit,
     onOpenSettingTarget: (SettingTarget) -> Unit
 ) {
     val titleText = when (feedback.type) {
@@ -50,7 +50,7 @@ internal fun TimerFeedbackDialog(
         FeedbackType.INFO -> FocusMintText
     }
 
-    TimerModal(onDismissRequest = onDismiss) {
+    TimerModal(onDismissRequest = { onDismiss(feedback.id) }) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -84,8 +84,8 @@ internal fun TimerFeedbackDialog(
                     if (feedback.settingTarget != SettingTarget.NONE) {
                         Button(
                             onClick = {
+                                onDismiss(feedback.id)
                                 onOpenSettingTarget(feedback.settingTarget)
-                                onDismiss()
                             },
                             modifier = Modifier
                                 .height(36.dp)
@@ -103,7 +103,7 @@ internal fun TimerFeedbackDialog(
                         }
                     }
                     FilledTonalButton(
-                        onClick = onDismiss,
+                        onClick = { onDismiss(feedback.id) },
                         modifier = Modifier
                             .height(36.dp)
                             .padding(horizontal = 4.dp),

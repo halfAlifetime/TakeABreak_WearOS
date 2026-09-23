@@ -55,6 +55,7 @@ class TimerViewModel(
     // 操作反馈模型（区分 ERROR / SUCCESS / INFO，避免成功提示弹错误红框）
     private val _feedback = mutableStateOf<ActionFeedback?>(null)
     val feedback: State<ActionFeedback?> = _feedback
+    private var feedbackCounter = 0L
 
     // 导航命令（用于表盘小图标/通知点击等单次导航意图）
     private var navCounter = 0L
@@ -97,22 +98,39 @@ class TimerViewModel(
         _permissionState.value = ReminderPolicy.diagnose(capabilityReader.read())
     }
 
-    fun clearFeedback() {
-        _feedback.value = null
+    fun clearFeedback(id: Long) {
+        if (_feedback.value?.id == id) _feedback.value = null
     }
 
+    private fun clearFeedbackFrom(source: FeedbackSource) {
+        _feedback.value?.takeIf { it.source == source }?.let { clearFeedback(it.id) }
+    }
+
+    private fun newFeedback(
+        message: String,
+        type: FeedbackType = FeedbackType.ERROR,
+        settingTarget: SettingTarget = SettingTarget.NONE,
+        source: FeedbackSource = FeedbackSource.TIMER
+    ) = ActionFeedback(
+        id = ++feedbackCounter,
+        message = message,
+        type = type,
+        settingTarget = settingTarget,
+        source = source
+    )
+
     fun showFeedback(message: String, type: FeedbackType = FeedbackType.INFO, target: SettingTarget = SettingTarget.NONE) {
-        _feedback.value = ActionFeedback(message, type, target)
+        _feedback.value = newFeedback(message, type, target)
     }
 
     private fun performPreflightCheck(): Boolean {
         refreshPermissions()
         val decision = _permissionState.value.command
         _feedback.value = when {
-            decision.blocker != null -> ActionFeedback(
+            decision.blocker != null -> newFeedback(
                 ReminderMessages.describe(decision.blocker), FeedbackType.ERROR, decision.blocker.target
             )
-            decision.warnings.isNotEmpty() -> ActionFeedback(ReminderMessages.command(decision), FeedbackType.INFO)
+            decision.warnings.isNotEmpty() -> newFeedback(ReminderMessages.command(decision), FeedbackType.INFO)
             else -> null
         }
         return decision.allowed
@@ -123,7 +141,7 @@ class TimerViewModel(
         if (!performPreflightCheck()) return@launch
         val result = runCatching { timerEngine.start() }.getOrElse { Result.failure(it) }
         if (result.isFailure) {
-            _feedback.value = ActionFeedback(
+            _feedback.value = newFeedback(
                 message = result.exceptionOrNull()?.message ?: "启动失败",
                 type = FeedbackType.ERROR,
                 settingTarget = SettingTarget.NONE
@@ -135,7 +153,7 @@ class TimerViewModel(
         if (timerState.value == null) return@launch
         val result = runCatching { timerEngine.pause() }.getOrElse { Result.failure(it) }
         if (result.isFailure) {
-            _feedback.value = ActionFeedback(
+            _feedback.value = newFeedback(
                 message = result.exceptionOrNull()?.message ?: "暂停保存失败",
                 type = FeedbackType.ERROR,
                 settingTarget = SettingTarget.NONE
@@ -148,7 +166,7 @@ class TimerViewModel(
         if (!performPreflightCheck()) return@launch
         val result = runCatching { timerEngine.resume() }.getOrElse { Result.failure(it) }
         if (result.isFailure) {
-            _feedback.value = ActionFeedback(
+            _feedback.value = newFeedback(
                 message = result.exceptionOrNull()?.message ?: "恢复失败",
                 type = FeedbackType.ERROR,
                 settingTarget = SettingTarget.NONE
@@ -161,13 +179,13 @@ class TimerViewModel(
         if (!performPreflightCheck()) return@launch
         val result = runCatching { timerEngine.retry() }.getOrElse { Result.failure(it) }
         if (result.isFailure) {
-            _feedback.value = ActionFeedback(
+            _feedback.value = newFeedback(
                 message = result.exceptionOrNull()?.message ?: "重试失败",
                 type = FeedbackType.ERROR,
                 settingTarget = SettingTarget.NONE
             )
         } else if (_feedback.value == null) {
-            _feedback.value = ActionFeedback(
+            _feedback.value = newFeedback(
                 message = "已重新恢复计时",
                 type = FeedbackType.SUCCESS,
                 settingTarget = SettingTarget.NONE
@@ -179,7 +197,7 @@ class TimerViewModel(
         if (timerState.value == null) return@launch
         val result = runCatching { timerEngine.stop() }.getOrElse { Result.failure(it) }
         if (result.isFailure) {
-            _feedback.value = ActionFeedback(
+            _feedback.value = newFeedback(
                 message = result.exceptionOrNull()?.message ?: "停止保存失败",
                 type = FeedbackType.ERROR,
                 settingTarget = SettingTarget.NONE
@@ -189,31 +207,32 @@ class TimerViewModel(
         }
     }
 
-    fun setWorkDuration(minutes: Int): Job = viewModelScope.launch {
-        if (timerState.value == null) return@launch
-        val res = runCatching {
+    fun setWorkDuration(minutes: Int): Job =
+        updateDuration(FeedbackSource.WORK_DURATION, "工作时长") {
             timerEngine.updateWorkDuration(minutes)
-        }.getOrElse { Result.failure(it) }
-        if (res.isFailure) {
-            _feedback.value = ActionFeedback(
-                message = res.exceptionOrNull()?.message ?: "修改时长失败",
-                type = FeedbackType.ERROR,
-                settingTarget = SettingTarget.NONE
-            )
         }
-    }
 
-    fun setBreakDuration(minutes: Int): Job = viewModelScope.launch {
-        if (timerState.value == null) return@launch
-        val res = runCatching {
+    fun setBreakDuration(minutes: Int): Job =
+        updateDuration(FeedbackSource.BREAK_DURATION, "休息时长") {
             timerEngine.updateBreakDuration(minutes)
-        }.getOrElse { Result.failure(it) }
-        if (res.isFailure) {
-            _feedback.value = ActionFeedback(
-                message = res.exceptionOrNull()?.message ?: "修改时长失败",
+        }
+
+    private fun updateDuration(
+        source: FeedbackSource,
+        label: String,
+        update: suspend () -> Result<Unit>
+    ): Job = viewModelScope.launch {
+        if (timerState.value == null) return@launch
+        val result = runCatching { update() }.getOrElse { Result.failure(it) }
+        if (result.isFailure) {
+            _feedback.value = newFeedback(
+                message = "$label 未保存：${result.exceptionOrNull()?.message ?: "请重试"}",
                 type = FeedbackType.ERROR,
-                settingTarget = SettingTarget.NONE
+                source = source
             )
+        } else {
+            // A successful work save must not dismiss a break error or a newer self-test message.
+            clearFeedbackFrom(source)
         }
     }
 
@@ -228,10 +247,10 @@ class TimerViewModel(
     private fun testReminder(phase: TimerPhase) {
         refreshPermissions()
         val result = reminderSelfTest.run(phase)
-        _feedback.value = ActionFeedback(
+        _feedback.value = newFeedback(
             message = result.message,
             type = if (result.isError) FeedbackType.ERROR else FeedbackType.INFO,
-            settingTarget = SettingTarget.NONE
+            source = FeedbackSource.REMINDER_TEST
         )
     }
 }

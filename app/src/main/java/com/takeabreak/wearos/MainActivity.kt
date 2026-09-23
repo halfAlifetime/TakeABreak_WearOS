@@ -27,6 +27,7 @@ import com.takeabreak.wearos.ui.SettingsScreen
 import com.takeabreak.wearos.ui.TimerScreen
 import com.takeabreak.wearos.ui.TimerLoadingScreen
 import com.takeabreak.wearos.ui.FeedbackType
+import com.takeabreak.wearos.ui.FeedbackSource
 import com.takeabreak.wearos.ui.TimerViewModel
 import com.takeabreak.wearos.ui.theme.TakeABreakTheme
 import kotlinx.coroutines.delay
@@ -214,13 +215,13 @@ fun MainAppNavHost(
             TimerScreen(
                 state = loadedState,
                 tickElapsed = tickElapsed,
-                feedback = feedback,
+                feedback = feedback?.takeIf { it.source == FeedbackSource.TIMER },
                 onStart = { viewModel.startTimer() },
                 onPause = { viewModel.pauseTimer() },
                 onResume = { viewModel.resumeTimer() },
                 onRetry = { viewModel.retryTimer() },
                 onStop = { viewModel.stopTimer() },
-                onClearFeedback = { viewModel.clearFeedback() },
+                onClearFeedback = viewModel::clearFeedback,
                 onOpenSettingTarget = onOpenSettingTarget,
                 onOpenSettings = { navController.navigate("settings") }
             )
@@ -229,6 +230,8 @@ fun MainAppNavHost(
         composable("settings") {
             SettingsScreen(
                 state = loadedState,
+                feedback = feedback?.takeIf { it.source.isDurationSetting },
+                onClearFeedback = viewModel::clearFeedback,
                 onSetWorkDuration = { min -> viewModel.setWorkDuration(min) },
                 onSetBreakDuration = { min -> viewModel.setBreakDuration(min) },
                 onOpenReminderStatus = { navController.navigate("reminder_status") },
@@ -242,7 +245,7 @@ fun MainAppNavHost(
             ReminderStatusScreen(
                 state = loadedState,
                 permissionEvaluation = permissionEvaluation,
-                feedback = feedback,
+                feedback = feedback?.takeIf { it.source == FeedbackSource.REMINDER_TEST },
                 onTestBreakReminder = { viewModel.testBreakReminder() },
                 onTestWorkReminder = { viewModel.testWorkReminder() },
                 onOpenExactAlarmSettings = onOpenExactAlarmSettings,

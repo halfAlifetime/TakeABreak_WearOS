@@ -15,6 +15,7 @@ import com.takeabreak.wearos.timer.TimerEngine
 import com.takeabreak.wearos.timer.TimerPhase
 import com.takeabreak.wearos.timer.TimerStatus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.launchIn
@@ -73,6 +74,93 @@ class TimerViewModelTest {
         assertNull(viewModel.feedback.value)
     }
 
+    @Test fun successfulWorkSaveClearsPreviousSaveError() = runTest(dispatcher) {
+        repository.failWrites = true
+        viewModel.setWorkDuration(45).join()
+        assertEquals(FeedbackType.ERROR, viewModel.feedback.value?.type)
+        assertEquals(FeedbackSource.WORK_DURATION, viewModel.feedback.value?.source)
+        repository.failWrites = false
+        viewModel.setWorkDuration(45).join()
+        assertEquals(45, repository.getTimerState().workDurationMinutes)
+        assertNull(viewModel.feedback.value)
+    }
+
+    @Test fun successfulBreakSaveClearsPreviousSaveError() = runTest(dispatcher) {
+        repository.failWrites = true
+        viewModel.setBreakDuration(10).join()
+        assertEquals(FeedbackType.ERROR, viewModel.feedback.value?.type)
+        assertEquals(FeedbackSource.BREAK_DURATION, viewModel.feedback.value?.source)
+        repository.failWrites = false
+        viewModel.setBreakDuration(10).join()
+        assertEquals(10, repository.getTimerState().breakDurationMinutes)
+        assertNull(viewModel.feedback.value)
+    }
+
+    @Test fun successfulWorkSaveKeepsBreakSaveError() = runTest(dispatcher) {
+        repository.failWrites = true
+        viewModel.setBreakDuration(10).join()
+        val breakError = viewModel.feedback.value!!
+        repository.failWrites = false
+        viewModel.setWorkDuration(45).join()
+        assertEquals(45, repository.getTimerState().workDurationMinutes)
+        assertEquals(5, repository.getTimerState().breakDurationMinutes)
+        assertEquals(breakError, viewModel.feedback.value)
+    }
+
+    @Test fun successfulBreakSaveKeepsWorkSaveError() = runTest(dispatcher) {
+        repository.failWrites = true
+        viewModel.setWorkDuration(45).join()
+        val workError = viewModel.feedback.value!!
+        repository.failWrites = false
+        viewModel.setBreakDuration(10).join()
+        assertEquals(10, repository.getTimerState().breakDurationMinutes)
+        assertEquals(60, repository.getTimerState().workDurationMinutes)
+        assertEquals(workError, viewModel.feedback.value)
+    }
+
+    @Test fun completingDurationSavePreservesNewerSelfTestFeedback() = runTest(dispatcher) {
+        val writeStarted = CompletableDeferred<Unit>()
+        val releaseWrite = CompletableDeferred<Unit>()
+        repository.beforeUpdate = {
+            writeStarted.complete(Unit)
+            releaseWrite.await()
+        }
+        val save = viewModel.setWorkDuration(45)
+        val selfTestFeedback = try {
+            writeStarted.await()
+            viewModel.testBreakReminder()
+            viewModel.feedback.value!!
+        } finally {
+            releaseWrite.complete(Unit)
+        }
+        save.join()
+        assertEquals(45, repository.getTimerState().workDurationMinutes)
+        assertEquals(FeedbackSource.REMINDER_TEST, selfTestFeedback.source)
+        assertEquals(selfTestFeedback, viewModel.feedback.value)
+    }
+
+    @Test fun dismissingPreviousFeedbackPreservesSettingsLaunchFailure() {
+        viewModel.showFeedback("Open settings", target = SettingTarget.EXACT_ALARM)
+        val previousId = viewModel.feedback.value!!.id
+        val dismissPrevious = { viewModel.clearFeedback(previousId) }
+        viewModel.showFeedback("Settings launch failed")
+        val failure = viewModel.feedback.value
+        dismissPrevious()
+        assertEquals(failure, viewModel.feedback.value)
+    }
+
+    @Test fun dismissingOldFeedbackCannotClearRepeatedMessage() {
+        viewModel.showFeedback("Repeatable failure")
+        val previous = viewModel.feedback.value!!
+        viewModel.showFeedback("Repeatable failure")
+        val current = viewModel.feedback.value!!
+        assertTrue(current.id > previous.id)
+        viewModel.clearFeedback(previous.id)
+        assertEquals(current, viewModel.feedback.value)
+        viewModel.clearFeedback(current.id)
+        assertNull(viewModel.feedback.value)
+    }
+
     @Test fun exactAlarmBlockerPreventsStartAndIdentifiesSettings() = runTest(dispatcher) {
         capabilities = capabilities.copy(exactAlarmsAllowed = false)
         viewModel.startTimer().join()
@@ -80,6 +168,7 @@ class TimerViewModelTest {
         assertTrue(scheduler.scheduledStates.isEmpty())
         assertEquals(FeedbackType.ERROR, viewModel.feedback.value?.type)
         assertEquals(SettingTarget.EXACT_ALARM, viewModel.feedback.value?.settingTarget)
+        assertEquals(FeedbackSource.TIMER, viewModel.feedback.value?.source)
     }
 
     @Test fun dndWarningAllowsTimerAndSurvivesSuccessfulStart() = runTest(dispatcher) {
@@ -96,12 +185,14 @@ class TimerViewModelTest {
         testResult = ReminderSelfTestResult("提示中含失败字样也不推断类型", false)
         viewModel.testBreakReminder()
         assertEquals(FeedbackType.INFO, viewModel.feedback.value?.type)
+        assertEquals(FeedbackSource.REMINDER_TEST, viewModel.feedback.value?.source)
         testResult = ReminderSelfTestResult("任意错误描述", true)
         viewModel.testWorkReminder()
         assertEquals(FeedbackType.ERROR, viewModel.feedback.value?.type)
+        assertEquals(FeedbackSource.REMINDER_TEST, viewModel.feedback.value?.source)
         assertEquals(listOf(TimerPhase.BREAK, TimerPhase.WORK), testedPhases)
         assertEquals(testResult.message, viewModel.feedback.value?.message)
-        viewModel.clearFeedback()
+        viewModel.clearFeedback(viewModel.feedback.value!!.id)
         assertNull(viewModel.feedback.value)
     }
 

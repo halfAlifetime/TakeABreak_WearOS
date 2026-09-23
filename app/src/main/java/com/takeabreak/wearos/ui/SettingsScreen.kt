@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +41,8 @@ import com.takeabreak.wearos.ui.theme.WorkBluePrimary
 @Composable
 fun SettingsScreen(
     state: TimerState,
+    feedback: ActionFeedback?,
+    onClearFeedback: (Long) -> Unit,
     onSetWorkDuration: (Int) -> Unit,
     onSetBreakDuration: (Int) -> Unit,
     onOpenReminderStatus: () -> Unit,
@@ -49,6 +52,11 @@ fun SettingsScreen(
 ) {
     val listState = rememberScalingLazyListState()
     val isStopped = state.status == TimerStatus.STOPPED
+
+    LaunchedEffect(feedback?.id) {
+        // The user may have scrolled down to the break controls when saving fails.
+        if (feedback != null) listState.animateScrollToItem(1)
+    }
 
     ScalingLazyColumn(
         modifier = Modifier
@@ -66,6 +74,34 @@ fun SettingsScreen(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)
             )
+        }
+
+        if (feedback != null) {
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(WarningRed.copy(alpha = 0.16f))
+                        .padding(10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = feedback.message,
+                        color = WarningRed,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    FilledTonalButton(
+                        onClick = { onClearFeedback(feedback.id) },
+                        modifier = Modifier.fillMaxWidth().height(36.dp),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text(text = "知道了", fontSize = 12.sp)
+                    }
+                }
+            }
         }
 
         if (!isStopped) {
