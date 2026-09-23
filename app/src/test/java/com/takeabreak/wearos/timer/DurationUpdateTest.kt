@@ -1,5 +1,10 @@
 package com.takeabreak.wearos.timer
 
+import com.takeabreak.wearos.timer.support.FakeReminderNotifier
+import com.takeabreak.wearos.timer.support.FakeAlarmScheduler
+import com.takeabreak.wearos.timer.support.FakeStopIntentStore
+import com.takeabreak.wearos.timer.support.FakeTimerRepository
+import com.takeabreak.wearos.timer.support.FakeClockProvider
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async

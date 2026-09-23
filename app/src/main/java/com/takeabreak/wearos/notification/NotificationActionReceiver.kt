@@ -13,7 +13,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action ?: return
-        val sessionId = intent.getStringExtra(AndroidReminderNotifier.EXTRA_SESSION_ID)
+        val sessionId = intent.getStringExtra(NotificationActions.EXTRA_SESSION_ID)
 
         val pendingResult = goAsync()
 

@@ -1,18 +1,11 @@
 package com.takeabreak.wearos.permission
 
+import com.takeabreak.wearos.permission.support.readyCapabilities
 import com.takeabreak.wearos.timer.TimerPhase
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
-
-fun readyCapabilities() = ReminderCapabilities(
-    exactAlarmsAllowed = true, notificationsEnabled = true, postNotificationsGranted = true,
-    workChannel = ChannelCapability(true, ChannelImportance.HIGH, true, false),
-    breakChannel = ChannelCapability(true, ChannelImportance.HIGH, true, false),
-    statusChannel = ChannelCapability(true, ChannelImportance.LOW, false, false),
-    interruptionMode = InterruptionMode.ALL, vibratorAvailable = true, fullScreenIntentAllowed = true
-)
 
 @RunWith(Parameterized::class)
 class ReminderPolicyTest(private val case: Case) {

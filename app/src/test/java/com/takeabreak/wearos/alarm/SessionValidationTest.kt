@@ -1,9 +1,10 @@
 package com.takeabreak.wearos.alarm
 
-import com.takeabreak.wearos.timer.FakeAlarmScheduler
-import com.takeabreak.wearos.timer.FakeClockProvider
-import com.takeabreak.wearos.timer.FakeReminderNotifier
-import com.takeabreak.wearos.timer.FakeTimerRepository
+import com.takeabreak.wearos.timer.support.FakeStopIntentStore
+import com.takeabreak.wearos.timer.support.FakeAlarmScheduler
+import com.takeabreak.wearos.timer.support.FakeClockProvider
+import com.takeabreak.wearos.timer.support.FakeReminderNotifier
+import com.takeabreak.wearos.timer.support.FakeTimerRepository
 import com.takeabreak.wearos.timer.PhaseTransitionResult
 import com.takeabreak.wearos.timer.TimerEngine
 import com.takeabreak.wearos.timer.TimerPhase
@@ -27,7 +28,7 @@ class SessionValidationTest {
         repo = FakeTimerRepository()
         scheduler = FakeAlarmScheduler()
         notifier = FakeReminderNotifier()
-        engine = TimerEngine(repo, scheduler, notifier, clock, com.takeabreak.wearos.timer.FakeStopIntentStore())
+        engine = TimerEngine(repo, scheduler, notifier, clock, com.takeabreak.wearos.timer.support.FakeStopIntentStore())
     }
 
     @Test

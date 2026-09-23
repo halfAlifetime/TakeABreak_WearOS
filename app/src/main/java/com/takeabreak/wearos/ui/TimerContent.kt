@@ -25,7 +25,7 @@ import com.takeabreak.wearos.ui.theme.TextSecondary
 import com.takeabreak.wearos.ui.theme.WarningRed
 
 /**
- * 运行中状态 (禅意水波沙漏 · 极简留白最终版)
+ * 运行中状态：组合文字与操作控件
  * 12点钟: ⚙️ 极简设置按钮
  * 中央: 超大轻量细线等宽倒计时 + 纯净副标「专注中 / 放松中」
  * 6点钟: 对称双圆按键 (暂停 + 结束重置)
@@ -72,7 +72,6 @@ internal fun RunningZenView(
         }
 
         TimerRunningControls(activeColor, activeTextColor, onPause, onAskStop)
-
     }
 }
 
@@ -119,7 +118,6 @@ internal fun PausedZenView(
         }
 
         TimerPausedControls(onResume, onAskStop)
-
     }
 }
 
@@ -163,7 +161,6 @@ internal fun StoppedZenView(
         }
 
         TimerStartControl(onStart)
-
     }
 }
 
@@ -199,6 +196,5 @@ internal fun ErrorZenView(
         }
 
         TimerErrorControls(onRetry, onAskStop)
-
     }
 }

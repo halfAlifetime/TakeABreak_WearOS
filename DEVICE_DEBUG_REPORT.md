@@ -1,23 +1,44 @@
 # 真机安装与调试记录
 
-**2026-09-23 振动修复结果：手动自检与正式到点提醒均通过实际触感确认。** 最新修正版于 14:10:30 安装到 SM-L310 的“休息一下·调试”，连接地址 `192.168.0.123:35993`，包名 `com.takeabreak.wearos.debug`。原应用未卸载或清除数据。
+## 2026-09-23 结构重构版：本地完成，真机待验收
+
+用户明确要求先完成重构，真机测试稍后。本轮未安装 APK、未修改设备数据或系统设置。历史无线地址不是已确认的当前连接；下方历史振动成功不能视为新版验收。
+
+| 项目 | 当前记录 |
+| --- | --- |
+| APK 构建时间（本机时间） | 2026-09-23 15:17:03 |
+| 构建包名 | com.takeabreak.wearos.debug |
+| 构建版本 | 2.2.0 / versionCode 5 |
+| 构建参数 | -PisolatedDebug=true |
+| APK SHA256 | `4CF7E6966634A66074610F4EC5D7A2E81C9D43770818F42B7E67ADA22FE071C1` |
+| 产物 | app/build/outputs/apk/debug/app-debug.apk |
+| 本地验证 | 166 项测试通过，构建成功，Lint 0 错误、34 警告 |
+| 安装版本、测试时间与恢复结果 | 本轮未安装，尚无新版设备结果 |
+
+本地持久化兼容通过真实文件 DataStore 的关闭重开验证，没有修改手表数据。后续验收仍按 IMPLEMENTATION_PLAN 的 P5 顺序执行：记录设备与原设置 → 覆盖安装独立调试包 → 手动两种振动 → 退出应用、结束进程并等待真实 WORK → BREAK → WORK 闹钟 → 核对系统记录和实际触感 → 检查限制场景、通知操作与旧会话隔离 → 停止并恢复时长及设置。四态圆屏布局、模态点击隔离、设置返回和生命周期动画也待本次设备验收。
+
+APK 输出路径会被后续构建覆盖；安装前应重新核对 SHA256、包名、版本和待验证源码提交。构建日志为 app/build/p5-validation.log，产物及日志不进入 Git。
+
+## 历史：重构前已确认的振动修复
+
+**2026-09-23 振动修复结果：手动自检与正式到点提醒均通过实际触感确认。** 当时修正版于 14:10:30 安装到 SM-L310 的“休息一下·调试”，连接地址 `192.168.0.123:35993`，包名 `com.takeabreak.wearos.debug`。原应用未卸载或清除数据。
 
 定位过程：最初仅依赖通知渠道时，通知虽有 HIGH 优先级和振动模式配置，实际没有触感。先补回手动 Vibrator 自检，14:00 的两次测试都有系统 finished 记录，用户确认“两次都有震动”；但 14:02、14:03 的自动提醒仍没有振动执行记录，用户明确确认“两次都没有震动”。这表明仅修复测试按钮不足以解决正式提醒。
 
 最终实现：手动自检和正式阶段切换共用直接振动路径，指定 USAGE_ALARM，休息节奏总长 2400ms、工作节奏总长 800ms，均不循环。每次重新检查通知权限、目标渠道振动开关和勿扰模式；正式提醒在引擎提交阶段后发出振动并保留通知显示，停止时取消振动。测试通知静默，测试页面显示请求结果和失败原因，未将 API 调用成功等同于物理振动成功。未修改手表全局振动或勿扰设置。
 
-| 最新真机验证 | 结果 |
+| 历史修复版真机验证 | 结果 |
 | --- | --- |
 | 14:12:20 自动“该休息了” | 系统记录 USAGE_ALARM，finished，实际执行 2421ms；用户确认有震动 |
 | 14:13:21 自动“休息结束” | 系统记录 USAGE_ALARM，finished，实际执行 815ms；用户确认有震动 |
 | 自动阶段推进 | WORK 第 1 轮 → BREAK 第 1 轮 → WORK 第 2 轮；没有点击测试按钮或伪造阶段广播 |
 | 测试后恢复 | STOPPED，generation 26，工作 60 分钟 / 休息 5 分钟；重新启动界面显示 60:00 和“休息 5分钟” |
 
-测试仍使用独立调试包的 1 分钟工作 / 1 分钟休息，启动后退回表盘并结束后台进程，再等待真实闹钟；没有修改系统时间。用户对最新版两次自动提醒的回答是“两次都有震动”。本地 67 项单元测试通过，构建通过，Lint 0 错误、34 警告。
+测试仍使用独立调试包的 1 分钟工作 / 1 分钟休息，启动后退回表盘并结束后台进程，再等待真实闹钟；没有修改系统时间。用户对该历史版本两次自动提醒的回答是“两次都有震动”。本地 67 项单元测试通过，构建通过，Lint 0 错误、34 警告。
 
-最新版 APK SHA256：`B0E7D651DEE9F9C5374693F5227F0EB9EEBABAB376538DC382590A9B23C54651`。构建参数为 `-PisolatedDebug=true`，产物位于 `app/build/outputs/apk/debug/app-debug.apk`。
+该历史版本 APK SHA256：`B0E7D651DEE9F9C5374693F5227F0EB9EEBABAB376538DC382590A9B23C54651`。构建参数为 `-PisolatedDebug=true`，产物位于 `app/build/outputs/apk/debug/app-debug.apk`。
 
-当前证据：[振动执行记录](C:/php/3/TakeABreak_WearOS/app/build/reports/device-debug/2026-09-23-vibration/automatic-fix-vibrations.txt)、[振动请求日志](C:/php/3/TakeABreak_WearOS/app/build/reports/device-debug/2026-09-23-vibration/automatic-fix-vibration-log.txt)、[最终状态](C:/php/3/TakeABreak_WearOS/app/build/reports/device-debug/2026-09-23-vibration/automatic-fix-final-state.json)、[最终界面](C:/php/3/TakeABreak_WearOS/app/build/reports/device-debug/2026-09-23-vibration/automatic-fix-final-home.png)。证据位于构建目录，清理构建时可能删除。
+历史证据：[振动执行记录](C:/php/3/TakeABreak_WearOS/app/build/reports/device-debug/2026-09-23-vibration/automatic-fix-vibrations.txt)、[振动请求日志](C:/php/3/TakeABreak_WearOS/app/build/reports/device-debug/2026-09-23-vibration/automatic-fix-vibration-log.txt)、[最终状态](C:/php/3/TakeABreak_WearOS/app/build/reports/device-debug/2026-09-23-vibration/automatic-fix-final-state.json)、[最终界面](C:/php/3/TakeABreak_WearOS/app/build/reports/device-debug/2026-09-23-vibration/automatic-fix-final-home.png)。证据位于构建目录，清理构建时可能删除。
 
 测试工具补充：恢复时长时发现 Windows 下通过 adb stdin 传输二进制在 0x1A 处截断。已根据停止后的完整状态快照恢复调试包数据，并将辅助脚本改为 adb push、暂存文件逐字节校验、替换后再次校验；冷启动界面和状态读取均正常。此问题发生于测试辅助工具，未将截断文件作为应用故障或遗留在设备上。
 

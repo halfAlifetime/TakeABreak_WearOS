@@ -4,8 +4,8 @@ import com.takeabreak.wearos.timer.TimerPhase
 import org.junit.Assert.*
 import org.junit.Test
 
-class ReminderVibrationTestTest {
-    private class Device : ReminderTestDevice {
+class ReminderSelfTestBehaviorTest {
+    private class Device : ReminderSelfTestDevice {
         var block: String? = null
         var available = true
         var motorFailure: Exception? = null
@@ -25,7 +25,7 @@ class ReminderVibrationTestTest {
 
     @Test fun restPreviewRequestsMotorBeforeSilentNotification() {
         val device = Device()
-        val result = ReminderVibrationTest(device).run(TimerPhase.BREAK)
+        val result = DefaultReminderSelfTest(device).run(TimerPhase.BREAK)
         assertEquals(listOf("motor:BREAK", "silent:BREAK"), device.calls)
         assertFalse(result.isError)
         assertTrue(result.message.contains("请确认"))
@@ -33,14 +33,14 @@ class ReminderVibrationTestTest {
 
     @Test fun repeatedWorkPreviewStillRequestsMotorEveryTime() {
         val device = Device()
-        val preview = ReminderVibrationTest(device)
+        val preview = DefaultReminderSelfTest(device)
         repeat(2) { assertFalse(preview.run(TimerPhase.WORK).isError) }
         assertEquals(listOf("motor:WORK", "silent:WORK", "motor:WORK", "silent:WORK"), device.calls)
     }
 
     @Test fun notificationOrDndBlockDoesNotBypassUserSettings() {
         val device = Device().apply { block = "当前勿扰模式可能拦截振动" }
-        val result = ReminderVibrationTest(device).run(TimerPhase.BREAK)
+        val result = DefaultReminderSelfTest(device).run(TimerPhase.BREAK)
         assertTrue(result.isError)
         assertEquals(device.block, result.message)
         assertTrue(device.calls.isEmpty())
@@ -48,7 +48,7 @@ class ReminderVibrationTestTest {
 
     @Test fun missingMotorReportsFailureWithoutPostingSuccessNotification() {
         val device = Device().apply { available = false }
-        val result = ReminderVibrationTest(device).run(TimerPhase.WORK)
+        val result = DefaultReminderSelfTest(device).run(TimerPhase.WORK)
         assertTrue(result.isError)
         assertTrue(result.message.contains("未检测到"))
         assertTrue(device.calls.isEmpty())
@@ -56,7 +56,7 @@ class ReminderVibrationTestTest {
 
     @Test fun rejectedMotorRequestIsVisibleAndDoesNotClaimSubmitted() {
         val device = Device().apply { motorFailure = SecurityException("VIBRATE denied") }
-        val result = ReminderVibrationTest(device).run(TimerPhase.BREAK)
+        val result = DefaultReminderSelfTest(device).run(TimerPhase.BREAK)
         assertTrue(result.isError)
         assertTrue(result.message.contains("VIBRATE denied"))
         assertTrue(device.calls.isEmpty())
@@ -64,7 +64,7 @@ class ReminderVibrationTestTest {
 
     @Test fun notificationFailureDoesNotHideThatMotorWasRequested() {
         val device = Device().apply { notificationFailure = IllegalStateException("notification unavailable") }
-        val result = ReminderVibrationTest(device).run(TimerPhase.WORK)
+        val result = DefaultReminderSelfTest(device).run(TimerPhase.WORK)
         assertTrue(result.isError)
         assertTrue(result.message.contains("已请求振动"))
         assertTrue(result.message.contains("notification unavailable"))

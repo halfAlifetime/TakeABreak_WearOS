@@ -5,7 +5,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.takeabreak.wearos.notification.ReminderTestResult
+import com.takeabreak.wearos.notification.ReminderSelfTest
 import com.takeabreak.wearos.permission.ReminderCapabilityReader
 import com.takeabreak.wearos.timer.ClockProvider
 import com.takeabreak.wearos.permission.ReminderDiagnostics
@@ -30,7 +30,7 @@ class TimerViewModel(
     private val timerEngine: TimerEngine,
     private val clockProvider: ClockProvider,
     private val capabilityReader: ReminderCapabilityReader,
-    private val reminderTest: (TimerPhase) -> ReminderTestResult
+    private val reminderSelfTest: ReminderSelfTest
 ) : ViewModel() {
 
     val timerState: StateFlow<TimerState> = timerEngine.timerStateFlow.stateIn(
@@ -237,7 +237,7 @@ class TimerViewModel(
 
     private fun testReminder(phase: TimerPhase) {
         refreshPermissions()
-        val result = reminderTest(phase)
+        val result = reminderSelfTest.run(phase)
         _feedback.value = ActionFeedback(
             message = result.message,
             type = if (result.isError) FeedbackType.ERROR else FeedbackType.INFO,

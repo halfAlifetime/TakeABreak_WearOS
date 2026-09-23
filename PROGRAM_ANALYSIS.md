@@ -1,5 +1,24 @@
 休息一下 Wear OS 原生程序分析与修复记录
 
+**2026-09-23 结构优化后的当前结论（P1–P5 本地完成）**
+
+依据 AGENTS 的 Codex 可读性与功能模块化原则，仍保留一个 app 模块及原有计时事务边界。本轮由单一代理执行，没有调用子代理，没有安装或操作手表。
+
+- 提醒能力统一为读取器 → 不可变快照 → ReminderPolicy；命令前置检查、诊断和直接振动共用规则。渠道 LOW/MIN、勿扰和全屏限制明确区分，状态读取失败不默认就绪。
+- 工作与休息改为独立单字段命令，获锁后合并最新有效状态；两个旧值覆盖场景先确定性复现，再由回归测试确认修复。
+- 阶段和恢复时钟计算提取为纯规则；业务恢复按 TimerFailure 判断，不解析中文错误。新增稳定字符串 failure_reason，旧 ERROR 缺少或未知代码映射 UNKNOWN，保留手动重试。真实文件 DataStore 的保存、关闭、重开和残留字段兼容均已验证。
+- TimerScreen 只组合状态与回调，水波、内容、控制和弹窗各自定位；ViewModel 通过 Factory 注入四项依赖，对外状态只读，页面统一消费 ActionFeedback。
+- ReminderNotifier 只提供正式提醒和清理接口；ReminderSelfTest 承接手动自检，两者共用 ReminderVibration 的请求路径。Android 实现与接口分文件；全部清理取消振动，旧会话定向清理不取消新会话振动。
+- 共用 Fake 与能力夹具迁至测试支持目录。原 67 项测试方法全部保留；自检测试类更名为 ReminderSelfTestBehaviorTest，八个原用例及断言保留。
+
+最终本地验证：166 项测试通过，0 失败、0 错误、0 跳过；独立调试 APK 构建成功；Lint 0 错误、34 警告。新增 99 项验证分别为能力策略 73、时长竞态 6、规则与真实持久化 13、ViewModel 7。Lint 警告分类为 UnusedResources 14、WearRecents 13、GradleDependency 3、ObsoleteSdkInt 2、ObsoleteLintCustomCheck 1、MonochromeLauncherIcon 1。
+
+验证日志位于 app/build/p1-validation.log、p2-validation.log、p3-validation.log、p4-validation.log、p5-validation.log；最终报告路径见 README。阶段提交及待办见 IMPLEMENTATION_PLAN。测试覆盖方法名已与 ee40b31 对照，无丢失；仅文件搬移没有增加镜像测试。
+
+边界：用户要求“你先完成重构，真机测试等下”。新版未安装；能力读取器的 Android 字段映射、四态视觉/模态交互和新 APK 的手动及两次自动振动仍待真机。历史触感结果不能替代新版验收。API 30–32 的音频属性分支保留且已编译，未在旧设备实测。停止记录、会话 URI、通知 action、渠道 ID 和原持久化键保持兼容，事务取消与恢复回归全部通过。
+
+**以下是 ee40b31 对应的历史修复与真机结果，保留供追溯；旧行号、代码规模和报告链接不代表当前源码位置。**
+
 **2026-09-23 修复结果**
 
 本次修改仅针对 `C:/php/3/TakeABreak_WearOS` 原生程序。已有的设置页、提醒状态页和主页面调整保留。

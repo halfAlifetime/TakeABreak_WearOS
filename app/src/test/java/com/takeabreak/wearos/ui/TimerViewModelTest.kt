@@ -1,16 +1,16 @@
 package com.takeabreak.wearos.ui
 
+import com.takeabreak.wearos.permission.support.readyCapabilities
 import androidx.lifecycle.ViewModelStore
-import com.takeabreak.wearos.notification.ReminderTestResult
+import com.takeabreak.wearos.notification.ReminderSelfTestResult
 import com.takeabreak.wearos.permission.InterruptionMode
 import com.takeabreak.wearos.permission.ReminderCapabilityReader
 import com.takeabreak.wearos.permission.SettingTarget
-import com.takeabreak.wearos.permission.readyCapabilities
-import com.takeabreak.wearos.timer.FakeAlarmScheduler
-import com.takeabreak.wearos.timer.FakeClockProvider
-import com.takeabreak.wearos.timer.FakeReminderNotifier
-import com.takeabreak.wearos.timer.FakeStopIntentStore
-import com.takeabreak.wearos.timer.FakeTimerRepository
+import com.takeabreak.wearos.timer.support.FakeAlarmScheduler
+import com.takeabreak.wearos.timer.support.FakeClockProvider
+import com.takeabreak.wearos.timer.support.FakeReminderNotifier
+import com.takeabreak.wearos.timer.support.FakeStopIntentStore
+import com.takeabreak.wearos.timer.support.FakeTimerRepository
 import com.takeabreak.wearos.timer.TimerEngine
 import com.takeabreak.wearos.timer.TimerPhase
 import com.takeabreak.wearos.timer.TimerStatus
@@ -36,7 +36,7 @@ class TimerViewModelTest {
     private val scheduler = FakeAlarmScheduler()
     private val engine = TimerEngine(repository, scheduler, FakeReminderNotifier(), clock, FakeStopIntentStore())
     private var capabilities = readyCapabilities()
-    private var testResult = ReminderTestResult("请求已提交，请确认触感", false)
+    private var testResult = ReminderSelfTestResult("请求已提交，请确认触感", false)
     private val testedPhases = mutableListOf<TimerPhase>()
     private lateinit var viewModel: TimerViewModel
 
@@ -85,10 +85,10 @@ class TimerViewModelTest {
 
     @Test fun selfTestUsesResultTypeRatherThanChineseKeywords() {
         // A successful request still asks for physical confirmation, so its type is INFO.
-        testResult = ReminderTestResult("提示中含失败字样也不推断类型", false)
+        testResult = ReminderSelfTestResult("提示中含失败字样也不推断类型", false)
         viewModel.testBreakReminder()
         assertEquals(FeedbackType.INFO, viewModel.feedback.value?.type)
-        testResult = ReminderTestResult("任意错误描述", true)
+        testResult = ReminderSelfTestResult("任意错误描述", true)
         viewModel.testWorkReminder()
         assertEquals(FeedbackType.ERROR, viewModel.feedback.value?.type)
         assertEquals(listOf(TimerPhase.BREAK, TimerPhase.WORK), testedPhases)
