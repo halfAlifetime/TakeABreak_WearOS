@@ -64,7 +64,7 @@ class ReminderPolicyTest(private val case: Case) {
         if (case.commandBlocked == null && case.workVibrationBlocked != null) {
             assertTrue(diagnosis.command.warnings.contains(diagnosis.workVibration.blocker))
         }
-        assertEquals(case.commandBlocked == null, ReminderPermissionChecker.checkPreflight(case.snapshot) is PreflightCheckResult.Passed)
+        assertEquals(case.commandBlocked == null, ReminderPermissionChecker.checkPreflight(case.snapshot).isSuccess)
     }
 }
 

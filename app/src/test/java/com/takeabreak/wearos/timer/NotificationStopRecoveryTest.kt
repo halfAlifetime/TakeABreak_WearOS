@@ -1,5 +1,7 @@
 package com.takeabreak.wearos.timer
 
+import com.takeabreak.wearos.notification.NotificationCommandHandler
+
 import com.takeabreak.wearos.timer.support.FakeReminderNotifier
 import com.takeabreak.wearos.timer.support.FakeAlarmScheduler
 import com.takeabreak.wearos.timer.support.FakeStopIntentStore
@@ -31,7 +33,7 @@ class NotificationStopRecoveryTest {
         repo.failReads = true
         repo.failWrites = true
         val cold = engine()
-        val result = cold.handleNotificationAction(NotificationActions.STOP, original.sessionId)
+        val result = NotificationCommandHandler(cold).handle(NotificationActions.STOP, original.sessionId)
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull()!!.message!!.contains("已保存"))
         assertTrue(journal.isRecoveryBlocked(original.sessionId))
@@ -58,7 +60,7 @@ class NotificationStopRecoveryTest {
     fun atomicStopPreservesPreferencesWhenOnlyInitialReadsFail() = runBlocking {
         val original = engine().start(customWorkMin = 45, customBreakMin = 3).getOrThrow()
         repo.failReads = true
-        val stopped = engine().handleNotificationAction(NotificationActions.STOP, original.sessionId).getOrThrow()
+        val stopped = NotificationCommandHandler(engine()).handle(NotificationActions.STOP, original.sessionId).getOrThrow()
         assertEquals(TimerStatus.STOPPED, stopped.status)
         assertEquals(45, stopped.workDurationMinutes)
         assertEquals(3, stopped.breakDurationMinutes)
@@ -78,7 +80,7 @@ class NotificationStopRecoveryTest {
         repo.failReads = true
         repo.failWrites = true
         val cold = engine()
-        cold.handleNotificationAction(NotificationActions.STOP, old.sessionId)
+        NotificationCommandHandler(cold).handle(NotificationActions.STOP, old.sessionId)
         cold.onSystemEvent(TimerSystemEvent.TIME_CHANGED)
         cold.onSystemEvent(TimerSystemEvent.BOOT_COMPLETED)
         assertEquals(cancellations, scheduler.allAlarmsCancelledCount)
@@ -101,7 +103,7 @@ class NotificationStopRecoveryTest {
         val current = warm.start().getOrThrow()
         repo.failReads = true
         val cold = engine()
-        assertTrue(cold.handleNotificationAction(NotificationActions.STOP, old.sessionId).isFailure)
+        assertTrue(NotificationCommandHandler(cold).handle(NotificationActions.STOP, old.sessionId).isFailure)
         assertEquals(current, cold.getTimerState())
         assertEquals(current, notifier.statusShown)
         assertEquals(listOf(current), scheduler.activeAlarms.values.toList())
@@ -116,10 +118,10 @@ class NotificationStopRecoveryTest {
         repo.failWrites = true
         val cold = engine()
         for (session in listOf(null, "")) {
-            assertTrue(cold.handleNotificationAction(NotificationActions.STOP, session).isFailure)
+            assertTrue(NotificationCommandHandler(cold).handle(NotificationActions.STOP, session).isFailure)
         }
         for (action in listOf(NotificationActions.PAUSE, NotificationActions.RESUME, "unknown-action")) {
-            assertTrue(cold.handleNotificationAction(action, original.sessionId).isFailure)
+            assertTrue(NotificationCommandHandler(cold).handle(action, original.sessionId).isFailure)
         }
         assertTrue(cold.pause().isFailure)
         assertTrue(cold.retry().isFailure)
@@ -138,7 +140,7 @@ class NotificationStopRecoveryTest {
         repo.failWrites = true
         journal.failWrites = true
         val cold = engine()
-        val result = cold.handleNotificationAction(NotificationActions.STOP, original.sessionId)
+        val result = NotificationCommandHandler(cold).handle(NotificationActions.STOP, original.sessionId)
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull()!!.message!!.contains("保存失败"))
         assertFalse(journal.isRecoveryBlocked(original.sessionId))
@@ -152,7 +154,7 @@ class NotificationStopRecoveryTest {
         val original = engine().start().getOrThrow()
         repo.failReads = true
         journal.failWrites = true
-        assertTrue(engine().handleNotificationAction(NotificationActions.STOP, original.sessionId).isSuccess)
+        assertTrue(NotificationCommandHandler(engine()).handle(NotificationActions.STOP, original.sessionId).isSuccess)
         repo.failReads = false
         assertEquals(TimerStatus.STOPPED, engine(reloadedJournal()).getTimerState().status)
         assertTrue(scheduler.activeAlarms.isEmpty())
@@ -164,7 +166,7 @@ class NotificationStopRecoveryTest {
         scheduler.knowsSessionIdentity = false
         repo.failReads = true
         repo.failWrites = true
-        engine().handleNotificationAction(NotificationActions.STOP, original.sessionId)
+        NotificationCommandHandler(engine()).handle(NotificationActions.STOP, original.sessionId)
         // Legacy alarms cannot be selectively cancelled, but their eventual delivery is rejected.
         assertEquals(1, scheduler.activeAlarms.size)
         scheduler.activeAlarms.remove(original.generation) // OS consumes the one-shot alarm.
@@ -184,7 +186,7 @@ class NotificationStopRecoveryTest {
         repo.failReads = true
         repo.failWrites = true
         val cold = engine()
-        cold.handleNotificationAction(NotificationActions.STOP, original.sessionId)
+        NotificationCommandHandler(cold).handle(NotificationActions.STOP, original.sessionId)
         repo.failWrites = false
         val next = cold.start().getOrThrow()
         assertNotEquals(original.sessionId, next.sessionId)

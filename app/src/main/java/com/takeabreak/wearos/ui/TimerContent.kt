@@ -1,5 +1,6 @@
 package com.takeabreak.wearos.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -23,6 +24,17 @@ import com.takeabreak.wearos.ui.theme.PauseGray
 import com.takeabreak.wearos.ui.theme.TextPrimary
 import com.takeabreak.wearos.ui.theme.TextSecondary
 import com.takeabreak.wearos.ui.theme.WarningRed
+import com.takeabreak.wearos.ui.theme.DarkBackground
+
+@Composable
+internal fun TimerLoadingScreen() {
+    Box(
+        modifier = Modifier.fillMaxSize().background(DarkBackground),
+        contentAlignment = Alignment.Center
+    ) {
+        Text("正在读取计时…", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+    }
+}
 
 /**
  * 运行中状态：组合文字与操作控件

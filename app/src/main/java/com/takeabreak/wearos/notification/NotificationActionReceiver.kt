@@ -24,7 +24,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
                 // 统一委托给 TimerEngine 在互斥锁内进行会话校验、权限检查与状态转移
                 // 彻底不直接操作 TimerRepository，杜绝竞态破坏新会话
-                app.timerEngine.handleNotificationAction(
+                NotificationCommandHandler(app.timerEngine).handle(
                     action = action,
                     expectedSessionId = sessionId,
                     preflightChecker = { ReminderPermissionChecker.checkPreflight(app.capabilityReader.read()) }

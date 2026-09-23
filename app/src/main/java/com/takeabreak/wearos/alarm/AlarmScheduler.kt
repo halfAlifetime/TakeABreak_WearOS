@@ -9,6 +9,7 @@ import com.takeabreak.wearos.MainActivity
 import com.takeabreak.wearos.timer.ClockProvider
 import com.takeabreak.wearos.timer.TimerState
 
+/** System port. Calls may throw; TimerSystemEffects contains failures for engine transactions. */
 interface AlarmScheduler {
     fun canScheduleExactAlarms(): Boolean
     fun schedulePhaseAlarm(state: TimerState, previousGeneration: Long? = null): Boolean

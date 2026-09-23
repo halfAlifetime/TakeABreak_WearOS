@@ -2,8 +2,6 @@ package com.takeabreak.wearos.timer
 
 import com.takeabreak.wearos.alarm.AlarmScheduler
 import com.takeabreak.wearos.notification.ReminderNotifier
-import com.takeabreak.wearos.notification.NotificationActions
-import com.takeabreak.wearos.permission.PreflightCheckResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -22,12 +20,13 @@ import java.util.UUID
 
 class TimerEngine(
     private val repository: TimerRepository,
-    private val scheduler: AlarmScheduler,
-    private val notifier: ReminderNotifier,
+    scheduler: AlarmScheduler,
+    notifier: ReminderNotifier,
     private val clockProvider: ClockProvider,
     private val stopIntentStore: StopIntentStore
 ) {
     private val mutex = Mutex()
+    private val effects = TimerSystemEffects(scheduler, notifier)
 
     // 内存中的权威有效状态：当持久化层发生异常或延迟时，该状态作为同进程内的绝对基准
     @Volatile private var inMemoryEffectiveState: TimerState? = null
@@ -159,6 +158,14 @@ class TimerEngine(
             return@mutate Result.success(current)
         }
 
+        // A stale UI start must not replace a paused/recoverable session. Preserve the
+        // explicit restart after an unreadable notification stop: only that pending
+        // stop authorizes replacing an unknown snapshot with a new session UUID.
+        val pendingUnreadableStop = stateReadFailed && explicitlyStoppedSessions.isNotEmpty()
+        if (current.status != TimerStatus.STOPPED && !pendingUnreadableStop) {
+            return@mutate Result.failure(IllegalStateException("请先继续、重试或结束当前计时，再开始新计时"))
+        }
+
         val workMinutes = customWorkMin ?: current.workDurationMinutes
         val breakMinutes = customBreakMin ?: current.breakDurationMinutes
         if (workMinutes <= 0 || breakMinutes <= 0) {
@@ -180,8 +187,8 @@ class TimerEngine(
         isExplicitlyStopped = false
 
         // 启动前彻底清理既往闹钟与残留通知
-        scheduler.cancelPhaseAlarm(current.generation)
-        scheduler.cancelAllPhaseAlarms()
+        effects.cancelPhaseAlarm(current.generation)
+        effects.cancelAllPhaseAlarms()
 
         val workDurationMs = workMinutes * 60_000L
         val nowElapsed = clockProvider.elapsedRealtime()
@@ -209,7 +216,7 @@ class TimerEngine(
         )
 
         // 尝试调度系统阶段闹钟
-        val scheduled = scheduler.schedulePhaseAlarm(startState, previousGeneration = current.generation)
+        val scheduled = effects.schedulePhaseAlarm(startState, previousGeneration = current.generation)
         if (!scheduled) {
             val errorState = startState.copy(
                 status = TimerStatus.ERROR,
@@ -220,11 +227,11 @@ class TimerEngine(
                 errorMessage = "无法调度精确闹钟，请检查手表设置中的精确闹钟与通知权限",
                 lastEventResult = "精确闹钟调度失败"
             )
-            scheduler.cancelPhaseAlarm(newGeneration)
+            effects.cancelPhaseAlarm(newGeneration)
             updateEffectiveState(errorState)
             runCatching { repository.updateTimerState { errorState } }
-            notifier.showErrorNotification("精确闹钟调度失败，请检查系统设置", newSessionId)
-            notifier.showStatusNotification(errorState)
+            effects.showErrorNotification("精确闹钟调度失败，请检查系统设置", newSessionId)
+            effects.showStatusNotification(errorState)
             return@mutate Result.failure(IllegalStateException(errorState.errorMessage))
         }
 
@@ -233,13 +240,13 @@ class TimerEngine(
         if (saveResult.isSuccess) {
             val saved = saveResult.getOrThrow()
             updateEffectiveState(saved)
-            notifier.clearAllNotifications()
-            notifier.showStatusNotification(saved)
+            effects.clearAllNotifications()
+            effects.showStatusNotification(saved)
             return@mutate Result.success(saved)
         }
 
         // 写入连续失败：撤销已排定闹钟，发布明确故障状态，返回 Result.failure 而不是抛出让 UI 崩溃
-        scheduler.cancelPhaseAlarm(newGeneration)
+        effects.cancelPhaseAlarm(newGeneration)
         val faultState = startState.copy(
             status = TimerStatus.ERROR,
             failureReason = TimerFailure.STORAGE_WRITE,
@@ -251,8 +258,8 @@ class TimerEngine(
         )
         updateEffectiveState(faultState)
         runCatching { repository.updateTimerState { faultState } }
-        notifier.showErrorNotification("存储故障，启动失败", newSessionId)
-        notifier.showStatusNotification(faultState)
+        effects.showErrorNotification("存储故障，启动失败", newSessionId)
+        effects.showStatusNotification(faultState)
         return@mutate Result.failure(saveResult.exceptionOrNull() ?: IOException("存储更新失败"))
     }
 
@@ -275,7 +282,7 @@ class TimerEngine(
         val remainingMs = (current.deadlineElapsedRealtimeMs - nowElapsed).coerceAtLeast(0L)
 
         // 先取消当前已注册的闹钟，并增加 generation 废弃在途旧广播
-        scheduler.cancelPhaseAlarm(current.generation)
+        effects.cancelPhaseAlarm(current.generation)
         val nextGeneration = current.generation + 1L
 
         val pausedState = current.copy(
@@ -294,7 +301,7 @@ class TimerEngine(
         if (saveResult.isSuccess) {
             val saved = saveResult.getOrThrow()
             updateEffectiveState(saved)
-            notifier.showStatusNotification(saved)
+            effects.showStatusNotification(saved)
             return Result.success(saved)
         }
 
@@ -307,7 +314,7 @@ class TimerEngine(
         )
         updateEffectiveState(errorState)
         runCatching { repository.updateTimerState { errorState } }
-        notifier.showStatusNotification(errorState)
+        effects.showStatusNotification(errorState)
         return Result.failure(saveResult.exceptionOrNull() ?: IOException("暂停保存失败"))
     }
 
@@ -359,10 +366,10 @@ class TimerEngine(
         )
 
         // 显式清理旧 generation 闹钟，确保系统闹钟池只有唯一有效一条
-        scheduler.cancelPhaseAlarm(current.generation)
-        val scheduled = scheduler.schedulePhaseAlarm(resumedState, previousGeneration = current.generation)
+        effects.cancelPhaseAlarm(current.generation)
+        val scheduled = effects.schedulePhaseAlarm(resumedState, previousGeneration = current.generation)
         if (!scheduled) {
-            scheduler.cancelPhaseAlarm(nextGeneration)
+            effects.cancelPhaseAlarm(nextGeneration)
             val errorState = resumedState.copy(
                 status = TimerStatus.ERROR,
                 failureReason = TimerFailure.ALARM_SCHEDULING,
@@ -374,8 +381,8 @@ class TimerEngine(
             )
             updateEffectiveState(errorState)
             runCatching { repository.updateTimerState { errorState } }
-            notifier.showErrorNotification("恢复失败：无法注册系统闹钟", current.sessionId)
-            notifier.showStatusNotification(errorState)
+            effects.showErrorNotification("恢复失败：无法注册系统闹钟", current.sessionId)
+            effects.showStatusNotification(errorState)
             return Result.failure(IllegalStateException(errorState.errorMessage))
         }
 
@@ -383,13 +390,13 @@ class TimerEngine(
         if (saveResult.isSuccess) {
             val saved = saveResult.getOrThrow()
             updateEffectiveState(saved)
-            notifier.clearReminderNotifications()
-            notifier.showStatusNotification(saved)
+            effects.clearReminderNotifications()
+            effects.showStatusNotification(saved)
             return Result.success(saved)
         }
 
         // 写入连续失败：撤回闹钟，发布明确故障状态并返回 Result.failure
-        scheduler.cancelPhaseAlarm(nextGeneration)
+        effects.cancelPhaseAlarm(nextGeneration)
         val faultState = resumedState.copy(
             status = TimerStatus.ERROR,
             failureReason = TimerFailure.STORAGE_WRITE,
@@ -401,8 +408,8 @@ class TimerEngine(
         )
         updateEffectiveState(faultState)
         runCatching { repository.updateTimerState { faultState } }
-        notifier.showErrorNotification("存储故障，恢复失败", current.sessionId)
-        notifier.showStatusNotification(faultState)
+        effects.showErrorNotification("存储故障，恢复失败", current.sessionId)
+        effects.showStatusNotification(faultState)
         return Result.failure(saveResult.exceptionOrNull() ?: IOException("存储更新失败"))
     }
 
@@ -423,10 +430,6 @@ class TimerEngine(
         val journalResult = runCatching {
             stopIntentStore.markStopped(current.generation)
         }
-        // 彻底取消系统闹钟
-        scheduler.cancelPhaseAlarm(current.generation)
-        scheduler.cancelAllPhaseAlarms()
-
         isExplicitlyStopped = true
         if (current.sessionId.isNotEmpty()) {
             explicitlyStoppedSessions.add(current.sessionId)
@@ -434,8 +437,13 @@ class TimerEngine(
 
         val stoppedState = buildStoppedState(current)
 
-        notifier.clearAllNotifications()
         updateEffectiveState(stoppedState)
+
+        // Stop is authoritative before best-effort cleanup. A platform failure must
+        // not skip publication/persistence or make an old event valid again.
+        effects.cancelPhaseAlarm(current.generation)
+        effects.cancelAllPhaseAlarms()
+        effects.clearAllNotifications()
 
         val saveResult = safeUpdateStateWithRetry(maxAttempts = 2) { stoppedState }
         if (saveResult.isSuccess) {
@@ -445,7 +453,7 @@ class TimerEngine(
         }
 
         // 用户明确点击停止后，绝不能以补偿或恢复为由偷偷重启旧计时器
-        // 内存权威状态已经置为 STOPPED，闹钟已全部撤销，即使落盘失败也不得恢复任何闹钟
+        // 内存已置为 STOPPED，旧会话已被禁止；即使清理或落盘失败也不得恢复旧会话
         val fallbackSave = runCatching { repository.updateTimerState { stoppedState } }
         if (fallbackSave.isSuccess) return Result.success(stoppedState)
         return Result.failure(IOException(
@@ -474,8 +482,8 @@ class TimerEngine(
     private suspend fun stopUnreadableSessionLocked(sessionId: String, unknown: TimerState): Result<TimerState> {
         val journalResult = runCatching { stopIntentStore.markSessionStopped(sessionId) }
         explicitlyStoppedSessions.add(sessionId)
-        scheduler.cancelSessionAlarms(sessionId)
-        notifier.clearSessionNotifications(sessionId)
+        effects.cancelSessionAlarms(sessionId)
+        effects.clearSessionNotifications(sessionId)
 
         // edit may succeed even if the earlier read failed. Compare inside the atomic
         // update so an old notification cannot overwrite a newer persisted session.
@@ -489,8 +497,8 @@ class TimerEngine(
             updateEffectiveState(effective)
             if (matchedSession) {
                 isExplicitlyStopped = true
-                scheduler.cancelAllPhaseAlarms()
-                notifier.clearAllNotifications()
+                effects.cancelAllPhaseAlarms()
+                effects.clearAllNotifications()
                 return Result.success(effective)
             }
             return Result.failure(IllegalStateException("通知所属会话已失效，操作已忽略"))
@@ -507,12 +515,12 @@ class TimerEngine(
     }
 
     /**
-     * 统一处理通知栏动作广播（在同一互斥锁内完成会话校验、权限检查与状态操作，杜绝绕过锁直接改写仓库）
+     * 在同一互斥锁内完成会话校验、继续条件检查与状态操作；不接收平台协议。
      */
-    suspend fun handleNotificationAction(
-        action: String,
+    suspend fun handleSessionCommand(
+        command: TimerCommand,
         expectedSessionId: String?,
-        preflightChecker: (() -> PreflightCheckResult)? = null
+        checkResume: () -> Result<Unit> = { Result.success(Unit) }
     ): Result<TimerState> = mutate {
         val current = getEffectiveStateInternal()
 
@@ -522,7 +530,7 @@ class TimerEngine(
         }
 
         if (stateReadFailed) {
-            return@mutate if (action == NotificationActions.STOP) {
+            return@mutate if (command == TimerCommand.STOP) {
                 stopUnreadableSessionLocked(expectedSessionId, current)
             } else {
                 Result.failure(IOException("暂时无法读取计时状态，请重试"))
@@ -532,22 +540,18 @@ class TimerEngine(
             return@mutate Result.failure(IllegalStateException("通知所属会话已失效，操作已忽略"))
         }
 
-        when (action) {
-            NotificationActions.PAUSE -> pauseLocked(current)
-            NotificationActions.STOP -> stopLocked(current)
-            NotificationActions.RESUME -> {
-                // 统一执行前置能力检查
-                if (preflightChecker != null) {
-                    val check = preflightChecker()
-                    if (check is PreflightCheckResult.Blocked) {
-                        // 保持原 PAUSED 状态并记录原因，绝不强制伪造旧 ERROR 快照写回仓库破坏新会话
-                        notifier.showErrorNotification("恢复被阻止：${check.reason}", current.sessionId)
-                        return@mutate Result.failure(IllegalStateException(check.reason))
-                    }
+        when (command) {
+            TimerCommand.PAUSE -> pauseLocked(current)
+            TimerCommand.STOP -> stopLocked(current)
+            TimerCommand.RESUME -> {
+                val blocked = checkResume().exceptionOrNull()
+                if (blocked != null) {
+                    // Preserve the actual paused state; never write a fabricated error snapshot.
+                    effects.showErrorNotification("恢复被阻止：${blocked.message}", current.sessionId)
+                    return@mutate Result.failure(blocked)
                 }
                 resumeLocked(current)
             }
-            else -> Result.failure(IllegalArgumentException("未知通知动作: $action"))
         }
     }
 
@@ -595,7 +599,7 @@ class TimerEngine(
         val current = getEffectiveStateInternal()
 
         if (sessionId in explicitlyStoppedSessions || stopIntentStore.isRecoveryBlocked(sessionId)) {
-            scheduler.cancelSessionAlarms(sessionId)
+            effects.cancelSessionAlarms(sessionId)
             return@mutate PhaseTransitionResult.Ignored("通知所属会话已停止，忽略晚到广播")
         }
 
@@ -628,8 +632,8 @@ class TimerEngine(
         // 3. 提前到达防护：若广播异常提前到达且剩余时间超过 1 秒，重新安排剩余时间
         val prematureDiff = current.deadlineElapsedRealtimeMs - nowElapsed
         if (prematureDiff > 1000L) {
-            scheduler.cancelPhaseAlarm(current.generation)
-            val rescheduled = scheduler.schedulePhaseAlarm(current)
+            effects.cancelPhaseAlarm(current.generation)
+            val rescheduled = effects.schedulePhaseAlarm(current)
             return@mutate if (rescheduled) {
                 PhaseTransitionResult.PrematureHandled("闹钟提前到达超过1秒，已重新对齐注册")
             } else {
@@ -644,8 +648,8 @@ class TimerEngine(
                 )
                 updateEffectiveState(errorState)
                 runCatching { repository.updateTimerState { errorState } }
-                notifier.showErrorNotification("计时异常：提前到达调度失败", sessionId)
-                notifier.showStatusNotification(errorState)
+                effects.showErrorNotification("计时异常：提前到达调度失败", sessionId)
+                effects.showStatusNotification(errorState)
                 PhaseTransitionResult.Failure("提前到达重新注册失败", errorState)
             }
         }
@@ -672,10 +676,10 @@ class TimerEngine(
         )
 
         // 5. 严格清理旧 generation 闹钟，调度下一阶段闹钟
-        scheduler.cancelPhaseAlarm(current.generation)
-        val scheduled = scheduler.schedulePhaseAlarm(nextState, previousGeneration = current.generation)
+        effects.cancelPhaseAlarm(current.generation)
+        val scheduled = effects.schedulePhaseAlarm(nextState, previousGeneration = current.generation)
         if (!scheduled) {
-            scheduler.cancelPhaseAlarm(nextGeneration)
+            effects.cancelPhaseAlarm(nextGeneration)
             val failureState = nextState.copy(
                 status = TimerStatus.ERROR,
                 failureReason = TimerFailure.ALARM_SCHEDULING,
@@ -687,8 +691,8 @@ class TimerEngine(
             )
             updateEffectiveState(failureState)
             runCatching { repository.updateTimerState { failureState } }
-            notifier.showErrorNotification("下一阶段调度失败，计时已暂停", sessionId)
-            notifier.showStatusNotification(failureState)
+            effects.showErrorNotification("下一阶段调度失败，计时已暂停", sessionId)
+            effects.showStatusNotification(failureState)
             return@mutate PhaseTransitionResult.Failure("下一阶段系统闹钟排程失败", failureState)
         }
 
@@ -697,19 +701,19 @@ class TimerEngine(
         if (saveResult.isSuccess) {
             val saved = saveResult.getOrThrow()
             updateEffectiveState(saved)
-            notifier.showPhaseReminder(
+            effects.showPhaseReminder(
                 phase = nextPhase,
                 round = nextRound,
                 durationMinutes = nextDurationMinutes,
                 sessionId = sessionId,
                 generation = nextGeneration
             )
-            notifier.showStatusNotification(saved)
+            effects.showStatusNotification(saved)
             return@mutate PhaseTransitionResult.Success(saved)
         }
 
         // 持久化持续失败防御：撤回已注册闹钟，避免闹钟在跑但仓库滞后的脱节状态
-        scheduler.cancelPhaseAlarm(nextGeneration)
+        effects.cancelPhaseAlarm(nextGeneration)
         val errorState = nextState.copy(
             status = TimerStatus.ERROR,
             failureReason = TimerFailure.STORAGE_WRITE,
@@ -721,8 +725,8 @@ class TimerEngine(
         )
         updateEffectiveState(errorState)
         runCatching { repository.updateTimerState { errorState } }
-        notifier.showErrorNotification("阶段状态保存失败，计时已中断", sessionId)
-        notifier.showStatusNotification(errorState)
+        effects.showErrorNotification("阶段状态保存失败，计时已中断", sessionId)
+        effects.showStatusNotification(errorState)
         return@mutate PhaseTransitionResult.Failure("阶段状态保存失败", errorState)
     }
 
@@ -735,7 +739,7 @@ class TimerEngine(
 
         // 0. 停止意图守护：若用户已主动停止，即便由于历史存储失败导致持久化层读出旧 RUNNING，也严禁自动恢复
         if (isExplicitlyStopped || current.status == TimerStatus.STOPPED || (current.sessionId.isNotEmpty() && current.sessionId in explicitlyStoppedSessions)) {
-            scheduler.cancelAllPhaseAlarms()
+            effects.cancelAllPhaseAlarms()
             val stopped = current.copy(
                 sessionId = "",
                 status = TimerStatus.STOPPED,
@@ -753,7 +757,7 @@ class TimerEngine(
         // 权限恢复事件处理：若之前因缺少权限处于 ERROR，立即自动重试恢复
         if (reason == TimerSystemEvent.EXACT_ALARM_PERMISSION_CHANGED) {
             if (current.status == TimerStatus.ERROR &&
-                TimerRecoveryPolicy.canRetryAfterPermissionGrant(current, scheduler.canScheduleExactAlarms())) {
+                TimerRecoveryPolicy.canRetryAfterPermissionGrant(current, effects.canScheduleExactAlarms())) {
                 val retryResult = resumeLocked(current)
                 return@mutate retryResult.getOrElse { getEffectiveStateInternal() }
             }
@@ -768,7 +772,7 @@ class TimerEngine(
         val nowWall = clockProvider.currentTimeMillis()
 
         // 取消旧闹钟，保证对账后仅有唯一有效闹钟
-        scheduler.cancelPhaseAlarm(current.generation)
+        effects.cancelPhaseAlarm(current.generation)
 
         // 根据事件类型决定剩余时长的基准参考系：
         // 1. 真实系统重启：单调时钟归零，以 wallClock 为准对账
@@ -792,16 +796,16 @@ class TimerEngine(
                 failureReason = null,
                 errorMessage = null
             )
-            val scheduled = scheduler.schedulePhaseAlarm(reconciledState, previousGeneration = current.generation)
+            val scheduled = effects.schedulePhaseAlarm(reconciledState, previousGeneration = current.generation)
             if (scheduled) {
                 val saveResult = safeUpdateStateWithRetry(maxAttempts = 2) { reconciledState }
                 if (saveResult.isSuccess) {
                     val saved = saveResult.getOrThrow()
                     updateEffectiveState(saved)
-                    notifier.showStatusNotification(saved)
+                    effects.showStatusNotification(saved)
                     return@mutate saved
                 } else {
-                    scheduler.cancelPhaseAlarm(nextGeneration)
+                    effects.cancelPhaseAlarm(nextGeneration)
                     val errorState = reconciledState.copy(
                         status = TimerStatus.ERROR,
                         failureReason = TimerFailure.STORAGE_WRITE,
@@ -813,11 +817,11 @@ class TimerEngine(
                     )
                     updateEffectiveState(errorState)
                     runCatching { repository.updateTimerState { errorState } }
-                    notifier.showStatusNotification(errorState)
+                    effects.showStatusNotification(errorState)
                     return@mutate errorState
                 }
             } else {
-                scheduler.cancelPhaseAlarm(nextGeneration)
+                effects.cancelPhaseAlarm(nextGeneration)
                 val errorState = reconciledState.copy(
                     status = TimerStatus.ERROR,
                     failureReason = TimerFailure.ALARM_SCHEDULING,
@@ -829,8 +833,8 @@ class TimerEngine(
                 )
                 updateEffectiveState(errorState)
                 runCatching { repository.updateTimerState { errorState } }
-                notifier.showErrorNotification("计时已暂停：系统调度失败", current.sessionId)
-                notifier.showStatusNotification(errorState)
+                effects.showErrorNotification("计时已暂停：系统调度失败", current.sessionId)
+                effects.showStatusNotification(errorState)
                 return@mutate errorState
             }
         } else {
@@ -852,7 +856,7 @@ class TimerEngine(
             val saveResult = safeUpdateStateWithRetry(maxAttempts = 2) { expiredState }
             val finalState = if (saveResult.isSuccess) saveResult.getOrThrow() else expiredState
             updateEffectiveState(finalState)
-            notifier.showStatusNotification(finalState)
+            effects.showStatusNotification(finalState)
             return@mutate finalState
         }
     }

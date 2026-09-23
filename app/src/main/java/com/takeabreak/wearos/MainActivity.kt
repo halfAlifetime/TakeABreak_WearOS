@@ -25,6 +25,7 @@ import com.takeabreak.wearos.permission.SettingTarget
 import com.takeabreak.wearos.ui.ReminderStatusScreen
 import com.takeabreak.wearos.ui.SettingsScreen
 import com.takeabreak.wearos.ui.TimerScreen
+import com.takeabreak.wearos.ui.TimerLoadingScreen
 import com.takeabreak.wearos.ui.FeedbackType
 import com.takeabreak.wearos.ui.TimerViewModel
 import com.takeabreak.wearos.ui.theme.TakeABreakTheme
@@ -199,13 +200,19 @@ fun MainAppNavHost(
         onClearKeepScreenOn()
     }
 
+    val loadedState = timerState
+    if (loadedState == null) {
+        TimerLoadingScreen()
+        return
+    }
+
     SwipeDismissableNavHost(
         navController = navController,
         startDestination = "timer"
     ) {
         composable("timer") {
             TimerScreen(
-                state = timerState,
+                state = loadedState,
                 tickElapsed = tickElapsed,
                 feedback = feedback,
                 onStart = { viewModel.startTimer() },
@@ -221,7 +228,7 @@ fun MainAppNavHost(
 
         composable("settings") {
             SettingsScreen(
-                state = timerState,
+                state = loadedState,
                 onSetWorkDuration = { min -> viewModel.setWorkDuration(min) },
                 onSetBreakDuration = { min -> viewModel.setBreakDuration(min) },
                 onOpenReminderStatus = { navController.navigate("reminder_status") },
@@ -233,7 +240,7 @@ fun MainAppNavHost(
 
         composable("reminder_status") {
             ReminderStatusScreen(
-                state = timerState,
+                state = loadedState,
                 permissionEvaluation = permissionEvaluation,
                 feedback = feedback,
                 onTestBreakReminder = { viewModel.testBreakReminder() },

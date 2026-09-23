@@ -15,7 +15,6 @@ import com.takeabreak.wearos.permission.SettingTarget
 import com.takeabreak.wearos.timer.TimerEngine
 import com.takeabreak.wearos.timer.TimerPhase
 import com.takeabreak.wearos.timer.TimerState
-import com.takeabreak.wearos.timer.TimerStatus
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
@@ -33,10 +32,12 @@ class TimerViewModel(
     private val reminderSelfTest: ReminderSelfTest
 ) : ViewModel() {
 
-    val timerState: StateFlow<TimerState> = timerEngine.timerStateFlow.stateIn(
+    // null means loading, never a synthetic STOPPED session. The UI exposes no timer
+    // controls until the authoritative snapshot has arrived.
+    val timerState: StateFlow<TimerState?> = timerEngine.timerStateFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = TimerState()
+        initialValue = null
     )
 
     // 前台刷新 tick，仅供界面重绘倒计时与进度条，无业务副作用
@@ -118,6 +119,7 @@ class TimerViewModel(
     }
 
     fun startTimer(): Job = viewModelScope.launch {
+        if (timerState.value == null) return@launch
         if (!performPreflightCheck()) return@launch
         val result = runCatching { timerEngine.start() }.getOrElse { Result.failure(it) }
         if (result.isFailure) {
@@ -130,6 +132,7 @@ class TimerViewModel(
     }
 
     fun pauseTimer(): Job = viewModelScope.launch {
+        if (timerState.value == null) return@launch
         val result = runCatching { timerEngine.pause() }.getOrElse { Result.failure(it) }
         if (result.isFailure) {
             _feedback.value = ActionFeedback(
@@ -141,6 +144,7 @@ class TimerViewModel(
     }
 
     fun resumeTimer(): Job = viewModelScope.launch {
+        if (timerState.value == null) return@launch
         if (!performPreflightCheck()) return@launch
         val result = runCatching { timerEngine.resume() }.getOrElse { Result.failure(it) }
         if (result.isFailure) {
@@ -153,6 +157,7 @@ class TimerViewModel(
     }
 
     fun retryTimer(): Job = viewModelScope.launch {
+        if (timerState.value == null) return@launch
         if (!performPreflightCheck()) return@launch
         val result = runCatching { timerEngine.retry() }.getOrElse { Result.failure(it) }
         if (result.isFailure) {
@@ -171,6 +176,7 @@ class TimerViewModel(
     }
 
     fun stopTimer(): Job = viewModelScope.launch {
+        if (timerState.value == null) return@launch
         val result = runCatching { timerEngine.stop() }.getOrElse { Result.failure(it) }
         if (result.isFailure) {
             _feedback.value = ActionFeedback(
@@ -184,15 +190,7 @@ class TimerViewModel(
     }
 
     fun setWorkDuration(minutes: Int): Job = viewModelScope.launch {
-        val state = timerState.value
-        if (state.status != TimerStatus.STOPPED) {
-            _feedback.value = ActionFeedback(
-                message = "计时运行或暂停中无法修改，请先停止",
-                type = FeedbackType.ERROR,
-                settingTarget = SettingTarget.NONE
-            )
-            return@launch
-        }
+        if (timerState.value == null) return@launch
         val res = runCatching {
             timerEngine.updateWorkDuration(minutes)
         }.getOrElse { Result.failure(it) }
@@ -206,15 +204,7 @@ class TimerViewModel(
     }
 
     fun setBreakDuration(minutes: Int): Job = viewModelScope.launch {
-        val state = timerState.value
-        if (state.status != TimerStatus.STOPPED) {
-            _feedback.value = ActionFeedback(
-                message = "计时运行或暂停中无法修改，请先停止",
-                type = FeedbackType.ERROR,
-                settingTarget = SettingTarget.NONE
-            )
-            return@launch
-        }
+        if (timerState.value == null) return@launch
         val res = runCatching {
             timerEngine.updateBreakDuration(minutes)
         }.getOrElse { Result.failure(it) }

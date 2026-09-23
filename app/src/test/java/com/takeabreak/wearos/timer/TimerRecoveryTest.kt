@@ -1,5 +1,7 @@
 package com.takeabreak.wearos.timer
 
+import com.takeabreak.wearos.notification.NotificationCommandHandler
+
 import com.takeabreak.wearos.timer.support.FakeReminderNotifier
 import com.takeabreak.wearos.timer.support.FakeAlarmScheduler
 import com.takeabreak.wearos.timer.support.FakeStopIntentStore
@@ -28,11 +30,11 @@ class TimerRecoveryTest {
     @Test
     fun notificationProtocolSupportsPauseResumeAndStop() = runBlocking {
         val started = engine.start().getOrThrow()
-        assertTrue(engine.handleNotificationAction(NotificationActions.PAUSE, started.sessionId).isSuccess)
+        assertTrue(NotificationCommandHandler(engine).handle(NotificationActions.PAUSE, started.sessionId).isSuccess)
         assertEquals(TimerStatus.PAUSED, engine.getTimerState().status)
-        assertTrue(engine.handleNotificationAction(NotificationActions.RESUME, started.sessionId).isSuccess)
+        assertTrue(NotificationCommandHandler(engine).handle(NotificationActions.RESUME, started.sessionId).isSuccess)
         assertEquals(TimerStatus.RUNNING, engine.getTimerState().status)
-        assertTrue(engine.handleNotificationAction(NotificationActions.STOP, started.sessionId).isSuccess)
+        assertTrue(NotificationCommandHandler(engine).handle(NotificationActions.STOP, started.sessionId).isSuccess)
         assertEquals(TimerStatus.STOPPED, engine.getTimerState().status)
         assertTrue(scheduler.activeAlarms.isEmpty())
     }
@@ -41,7 +43,7 @@ class TimerRecoveryTest {
     fun notificationWithoutSessionCannotControlCurrentTimer() = runBlocking {
         val started = engine.start().getOrThrow()
         for (session in listOf(null, "", "old-session")) {
-            assertTrue(engine.handleNotificationAction(NotificationActions.STOP, session).isFailure)
+            assertTrue(NotificationCommandHandler(engine).handle(NotificationActions.STOP, session).isFailure)
         }
         assertEquals(started, engine.getTimerState())
     }

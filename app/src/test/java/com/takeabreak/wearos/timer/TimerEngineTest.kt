@@ -1,5 +1,7 @@
 package com.takeabreak.wearos.timer
 
+import com.takeabreak.wearos.notification.NotificationCommandHandler
+
 import com.takeabreak.wearos.timer.support.FakeReminderNotifier
 import com.takeabreak.wearos.timer.support.FakeAlarmScheduler
 import com.takeabreak.wearos.timer.support.FakeStopIntentStore
@@ -326,7 +328,7 @@ class TimerEngineTest {
         val runningState = engine.getTimerState()
 
         // 1. 错误的 sessionId 动作被拦截
-        val invalidSessionResult = engine.handleNotificationAction(
+        val invalidSessionResult = NotificationCommandHandler(engine).handle(
             action = com.takeabreak.wearos.notification.NotificationActions.PAUSE,
             expectedSessionId = "stale-session-id"
         )
@@ -334,7 +336,7 @@ class TimerEngineTest {
         assertEquals(TimerStatus.RUNNING, engine.getTimerState().status)
 
         // 2. 正确的 sessionId 成功在锁内执行暂停
-        val validPauseResult = engine.handleNotificationAction(
+        val validPauseResult = NotificationCommandHandler(engine).handle(
             action = com.takeabreak.wearos.notification.NotificationActions.PAUSE,
             expectedSessionId = runningState.sessionId
         )
@@ -350,14 +352,11 @@ class TimerEngineTest {
         assertEquals(TimerStatus.PAUSED, pausedState.status)
 
         // 模拟通知点击“继续”，但权限检查被阻止
-        val blockedResult = engine.handleNotificationAction(
+        val blockedResult = NotificationCommandHandler(engine).handle(
             action = com.takeabreak.wearos.notification.NotificationActions.RESUME,
             expectedSessionId = pausedState.sessionId,
             preflightChecker = {
-                com.takeabreak.wearos.permission.PreflightCheckResult.Blocked(
-                    reason = "精确闹钟权限缺失",
-                    target = com.takeabreak.wearos.permission.SettingTarget.EXACT_ALARM
-                )
+                Result.failure(IllegalStateException("精确闹钟权限缺失"))
             }
         )
         assertTrue(blockedResult.isFailure)

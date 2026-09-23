@@ -1,6 +1,6 @@
 package com.takeabreak.wearos.notification
 
-/** Shared wire protocol for notification PendingIntents and the timer engine. */
+/** Stable wire protocol shared by notification PendingIntents and their entry-point decoder. */
 object NotificationActions {
     const val PAUSE = "com.takeabreak.wearos.action.PAUSE"
     const val RESUME = "com.takeabreak.wearos.action.RESUME"

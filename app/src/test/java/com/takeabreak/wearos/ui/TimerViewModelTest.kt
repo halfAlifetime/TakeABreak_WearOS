@@ -15,6 +15,9 @@ import com.takeabreak.wearos.timer.TimerEngine
 import com.takeabreak.wearos.timer.TimerPhase
 import com.takeabreak.wearos.timer.TimerStatus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
@@ -39,6 +42,7 @@ class TimerViewModelTest {
     private var testResult = ReminderSelfTestResult("请求已提交，请确认触感", false)
     private val testedPhases = mutableListOf<TimerPhase>()
     private lateinit var viewModel: TimerViewModel
+    private lateinit var stateCollection: Job
 
     @Before fun setup() {
         Dispatchers.setMain(dispatcher)
@@ -47,10 +51,14 @@ class TimerViewModelTest {
             testResult
         }
         store.put("timer", viewModel)
+        stateCollection = viewModel.timerState.launchIn(CoroutineScope(dispatcher))
+        dispatcher.scheduler.runCurrent()
     }
 
     @After fun cleanup() {
+        stateCollection.cancel()
         store.clear()
+        dispatcher.scheduler.runCurrent()
         Dispatchers.resetMain()
     }
 
