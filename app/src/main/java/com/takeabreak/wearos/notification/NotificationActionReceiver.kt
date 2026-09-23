@@ -27,7 +27,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
                 app.timerEngine.handleNotificationAction(
                     action = action,
                     expectedSessionId = sessionId,
-                    preflightChecker = { ReminderPermissionChecker.checkPreflight(context) }
+                    preflightChecker = { ReminderPermissionChecker.checkPreflight(app.capabilityReader.read()) }
                 )
             } finally {
                 pendingResult.finish()

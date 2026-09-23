@@ -8,10 +8,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.takeabreak.wearos.TakeABreakApplication
-import com.takeabreak.wearos.notification.NotificationChannels
-import com.takeabreak.wearos.permission.PermissionEvaluation
-import com.takeabreak.wearos.permission.PreflightCheckResult
-import com.takeabreak.wearos.permission.ReminderPermissionChecker
+import com.takeabreak.wearos.permission.ReminderDiagnostics
+import com.takeabreak.wearos.permission.ReminderMessages
+import com.takeabreak.wearos.permission.ReminderPolicy
 import com.takeabreak.wearos.permission.SettingTarget
 import com.takeabreak.wearos.timer.TimerEngine
 import com.takeabreak.wearos.timer.TimerPhase
@@ -47,13 +46,9 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     private var isUiVisible = false
     private var tickerJob: Job? = null
 
-    // 权限检查状态
-    private val _permissionState = mutableStateOf(ReminderPermissionChecker.evaluate(application))
-    val permissionState: State<PermissionEvaluation> = _permissionState
-
-    // 渠道实际信息
-    private val _channelStatuses = mutableStateOf(NotificationChannels.queryChannelStatuses(application))
-    val channelStatuses = _channelStatuses
+    // Diagnostics and preflight are derived from the same system snapshot.
+    private val _permissionState = mutableStateOf(ReminderPolicy.diagnose(app.capabilityReader.read()))
+    val permissionState: State<ReminderDiagnostics> = _permissionState
 
     // 操作反馈模型（区分 ERROR / SUCCESS / INFO，避免成功提示弹错误红框）
     private val _feedback = mutableStateOf<ActionFeedback?>(null)
@@ -103,8 +98,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refreshPermissions() {
-        _permissionState.value = ReminderPermissionChecker.evaluate(getApplication())
-        _channelStatuses.value = NotificationChannels.queryChannelStatuses(getApplication())
+        _permissionState.value = ReminderPolicy.diagnose(app.capabilityReader.read())
     }
 
     fun clearActionMessage() {
@@ -117,21 +111,15 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun performPreflightCheck(): Boolean {
         refreshPermissions()
-        val check = ReminderPermissionChecker.checkPreflight(getApplication())
-        return when (check) {
-            is PreflightCheckResult.Passed -> {
-                _feedback.value = null
-                true
-            }
-            is PreflightCheckResult.Blocked -> {
-                _feedback.value = ActionFeedback(
-                    message = check.reason,
-                    type = FeedbackType.ERROR,
-                    settingTarget = check.target
-                )
-                false
-            }
+        val decision = _permissionState.value.command
+        _feedback.value = when {
+            decision.blocker != null -> ActionFeedback(
+                ReminderMessages.describe(decision.blocker), FeedbackType.ERROR, decision.blocker.target
+            )
+            decision.warnings.isNotEmpty() -> ActionFeedback(ReminderMessages.command(decision), FeedbackType.INFO)
+            else -> null
         }
+        return decision.allowed
     }
 
     fun startTimer() {
@@ -144,8 +132,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     type = FeedbackType.ERROR,
                     settingTarget = SettingTarget.NONE
                 )
-            } else {
-                _feedback.value = null
             }
         }
     }
@@ -173,8 +159,6 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     type = FeedbackType.ERROR,
                     settingTarget = SettingTarget.NONE
                 )
-            } else {
-                _feedback.value = null
             }
         }
     }
@@ -189,7 +173,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
                     type = FeedbackType.ERROR,
                     settingTarget = SettingTarget.NONE
                 )
-            } else {
+            } else if (_feedback.value == null) {
                 _feedback.value = ActionFeedback(
                     message = "已重新恢复计时",
                     type = FeedbackType.SUCCESS,

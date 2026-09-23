@@ -1,4 +1,4 @@
-﻿package com.takeabreak.wearos.ui
+package com.takeabreak.wearos.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -25,8 +25,8 @@ import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
-import com.takeabreak.wearos.notification.NotificationChannels
-import com.takeabreak.wearos.permission.PermissionEvaluation
+import com.takeabreak.wearos.permission.ReminderDiagnostics
+import com.takeabreak.wearos.permission.ReminderMessages
 import com.takeabreak.wearos.timer.TimerState
 import com.takeabreak.wearos.ui.theme.BreakGreenPrimary
 import com.takeabreak.wearos.ui.theme.DarkBackground
@@ -42,8 +42,7 @@ import java.util.Locale
 @Composable
 fun ReminderStatusScreen(
     state: TimerState,
-    permissionEvaluation: PermissionEvaluation,
-    channelStatuses: List<NotificationChannels.ChannelStatusInfo>,
+    permissionEvaluation: ReminderDiagnostics,
     actionFeedback: String?,
     onTestBreakReminder: () -> Unit,
     onTestWorkReminder: () -> Unit,
@@ -72,103 +71,38 @@ fun ReminderStatusScreen(
             )
         }
 
-        // 核心权限检查项
         item {
-            StatusCard(
-                title = "系统通知总开关",
-                value = if (permissionEvaluation.areNotificationsEnabled) "已允许" else "未允许",
-                isOk = permissionEvaluation.areNotificationsEnabled
-            )
+            StatusCard("计时与提醒", ReminderMessages.command(permissionEvaluation.command), permissionEvaluation.command.allowed && permissionEvaluation.command.warnings.isEmpty())
         }
-
-        if (!permissionEvaluation.areNotificationsEnabled) {
-            item {
-                FilledTonalButton(
-                    onClick = onOpenSystemNotificationSettings,
-                    modifier = Modifier
-                        .fillMaxWidth(0.92f)
-                        .height(34.dp)
-                        .padding(vertical = 2.dp),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = WarningRed.copy(alpha = 0.25f),
-                        contentColor = TextPrimary
-                    )
-                ) {
-                    Text(
-                        text = "前往开启手表通知",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-
         item {
-            StatusCard(
-                title = "精确闹钟权限",
-                value = if (permissionEvaluation.canScheduleExactAlarms) "已授权 (setAlarmClock)" else "未授权",
-                isOk = permissionEvaluation.canScheduleExactAlarms
-            )
+            val allowed = permissionEvaluation.capabilities.notificationsEnabled == true &&
+                permissionEvaluation.capabilities.postNotificationsGranted == true
+            StatusCard("系统通知", if (allowed) "已允许" else "未允许或暂不可读取", allowed)
         }
-
-        if (!permissionEvaluation.canScheduleExactAlarms) {
-            item {
-                FilledTonalButton(
-                    onClick = onOpenExactAlarmSettings,
-                    modifier = Modifier
-                        .fillMaxWidth(0.92f)
-                        .height(34.dp)
-                        .padding(vertical = 2.dp),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = WarningRed.copy(alpha = 0.25f),
-                        contentColor = TextPrimary
-                    )
-                ) {
-                    Text(
-                        text = "前往授权精确闹钟",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
+        if (permissionEvaluation.capabilities.notificationsEnabled != true ||
+            permissionEvaluation.capabilities.postNotificationsGranted != true) {
+            item { FilledTonalButton(onClick = onOpenSystemNotificationSettings) { Text("前往手表通知设置") } }
         }
-
-        // 表盘 Ongoing Activity 状态渠道
         item {
-            val statusChan = channelStatuses.find { it.channelId == NotificationChannels.CHANNEL_STATUS_ID }
-            val ok = permissionEvaluation.isStatusChannelReady
-            StatusCard(
-                title = "表盘持续活动小图标 (Ongoing)",
-                value = if (statusChan != null) {
-                    if (ok) "已就绪 · 表盘小图标可用" else "已关闭 · 表盘不显示小图标"
-                } else "已配置",
-                isOk = ok
-            )
+            val allowed = permissionEvaluation.capabilities.exactAlarmsAllowed == true
+            StatusCard("精确闹钟权限", if (allowed) "已授权" else "未授权或暂不可读取", allowed)
         }
-
-        // 实际渠道振动状态
-        item {
-            val breakChan = channelStatuses.find { it.channelId == NotificationChannels.CHANNEL_BREAK_ID }
-            val ok = breakChan?.isVibrationEnabled == true && (breakChan.importance >= 4)
-            StatusCard(
-                title = "渠道：休息开始 (振动)",
-                value = if (breakChan != null) {
-                    "${if (breakChan.isVibrationEnabled) "振动开启" else "振动关闭"} · 重要性 ${breakChan.importance}"
-                } else "未配置",
-                isOk = ok
-            )
+        if (permissionEvaluation.capabilities.exactAlarmsAllowed != true) {
+            item { FilledTonalButton(onClick = onOpenExactAlarmSettings) { Text("前往授权精确闹钟") } }
         }
-
         item {
-            val workChan = channelStatuses.find { it.channelId == NotificationChannels.CHANNEL_WORK_ID }
-            val ok = workChan?.isVibrationEnabled == true && (workChan.importance >= 4)
-            StatusCard(
-                title = "渠道：工作开始 (振动)",
-                value = if (workChan != null) {
-                    "${if (workChan.isVibrationEnabled) "振动开启" else "振动关闭"} · 重要性 ${workChan.importance}"
-                } else "未配置",
-                isOk = ok
-            )
+            val ready = permissionEvaluation.statusChannelReady
+            StatusCard("表盘持续活动小图标", if (ready) "状态通知渠道已开启" else "渠道不可用或暂不可读取", ready)
+        }
+        item {
+            StatusCard("休息提醒触感", ReminderMessages.vibration(permissionEvaluation.breakVibration), permissionEvaluation.breakVibration.allowed)
+        }
+        item {
+            StatusCard("工作提醒触感", ReminderMessages.vibration(permissionEvaluation.workVibration), permissionEvaluation.workVibration.allowed)
+        }
+        item {
+            val issue = permissionEvaluation.breakPopup.blocker ?: permissionEvaluation.workPopup.blocker
+            StatusCard("弹屏配置", issue?.let(ReminderMessages::describe) ?: "配置满足条件，实际展示由系统决定", issue == null)
         }
 
         // 最近事件审计

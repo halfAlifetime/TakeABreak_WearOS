@@ -12,6 +12,8 @@ import com.takeabreak.wearos.timer.SystemClockProvider
 import com.takeabreak.wearos.timer.SharedPreferencesStopIntentStore
 import com.takeabreak.wearos.timer.TimerEngine
 import com.takeabreak.wearos.timer.TimerRepository
+import com.takeabreak.wearos.permission.AndroidReminderCapabilityReader
+import com.takeabreak.wearos.permission.ReminderCapabilityReader
 
 class TakeABreakApplication : Application() {
 
@@ -29,6 +31,9 @@ class TakeABreakApplication : Application() {
     lateinit var alarmScheduler: AlarmScheduler
         private set
 
+    lateinit var capabilityReader: ReminderCapabilityReader
+        private set
+
     lateinit var reminderNotifier: ReminderNotifier
         private set
 
@@ -42,7 +47,9 @@ class TakeABreakApplication : Application() {
         clockProvider = SystemClockProvider(this)
         timerRepository = DataStoreTimerRepository(this)
         alarmScheduler = AndroidAlarmScheduler(this, clockProvider)
-        reminderNotifier = AndroidReminderNotifier(this)
+        NotificationChannels.createChannels(this)
+        capabilityReader = AndroidReminderCapabilityReader(this, alarmScheduler)
+        reminderNotifier = AndroidReminderNotifier(this, capabilityReader)
 
         timerEngine = TimerEngine(
             repository = timerRepository,
@@ -52,7 +59,5 @@ class TakeABreakApplication : Application() {
             stopIntentStore = SharedPreferencesStopIntentStore(this)
         )
 
-        // 初始化 Wear OS 系统通知渠道
-        NotificationChannels.createChannels(this)
     }
 }

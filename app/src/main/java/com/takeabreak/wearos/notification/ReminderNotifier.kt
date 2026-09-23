@@ -1,5 +1,6 @@
 package com.takeabreak.wearos.notification
 
+import com.takeabreak.wearos.permission.ReminderCapabilityReader
 import android.os.Build
 import android.os.Bundle
 import android.app.NotificationManager
@@ -37,7 +38,10 @@ interface ReminderNotifier {
     fun sendTestReminder(phase: TimerPhase): ReminderTestResult
 }
 
-class AndroidReminderNotifier(private val context: Context) : ReminderNotifier {
+class AndroidReminderNotifier(
+    private val context: Context,
+    capabilityReader: ReminderCapabilityReader
+) : ReminderNotifier {
 
     companion object {
         const val NOTIFICATION_ID_STATUS = 1001
@@ -55,7 +59,7 @@ class AndroidReminderNotifier(private val context: Context) : ReminderNotifier {
         context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
 
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-    private val vibration = AndroidReminderVibration(context)
+    private val vibration = AndroidReminderVibration(context, capabilityReader)
 
     private fun canUseFullScreenIntent(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||

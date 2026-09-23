@@ -20,7 +20,7 @@ import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import com.takeabreak.wearos.notification.NotificationChannels
-import com.takeabreak.wearos.permission.ReminderPermissionChecker
+import com.takeabreak.wearos.permission.ReminderSettingsNavigator
 import com.takeabreak.wearos.permission.SettingTarget
 import com.takeabreak.wearos.ui.ReminderStatusScreen
 import com.takeabreak.wearos.ui.SettingsScreen
@@ -88,22 +88,22 @@ class MainActivity : ComponentActivity() {
                     viewModel = viewModel,
                     onClearKeepScreenOn = { clearKeepScreenOn() },
                     onOpenNotificationSettings = {
-                        val intent = ReminderPermissionChecker.createAppNotificationSettingsIntent(this)
+                        val intent = ReminderSettingsNavigator.createAppNotificationSettingsIntent(this)
                         runCatching { startActivity(intent) }
                     },
                     onOpenExactAlarmSettings = {
-                        val intent = ReminderPermissionChecker.createExactAlarmSettingsIntent(this)
+                        val intent = ReminderSettingsNavigator.createExactAlarmSettingsIntent(this)
                         if (intent != null) {
                             runCatching { startActivity(intent) }
                         }
                     },
                     onOpenSettingTarget = { target ->
                         val targetIntent = when (target) {
-                            SettingTarget.EXACT_ALARM -> ReminderPermissionChecker.createExactAlarmSettingsIntent(this)
-                            SettingTarget.APP_NOTIFICATION -> ReminderPermissionChecker.createAppNotificationSettingsIntent(this)
-                            SettingTarget.CHANNEL_WORK -> ReminderPermissionChecker.createChannelSettingsIntent(this, NotificationChannels.CHANNEL_WORK_ID)
-                            SettingTarget.CHANNEL_BREAK -> ReminderPermissionChecker.createChannelSettingsIntent(this, NotificationChannels.CHANNEL_BREAK_ID)
-                            SettingTarget.CHANNEL_STATUS -> ReminderPermissionChecker.createStatusChannelSettingsIntent(this)
+                            SettingTarget.EXACT_ALARM -> ReminderSettingsNavigator.createExactAlarmSettingsIntent(this)
+                            SettingTarget.APP_NOTIFICATION -> ReminderSettingsNavigator.createAppNotificationSettingsIntent(this)
+                            SettingTarget.CHANNEL_WORK -> ReminderSettingsNavigator.createChannelSettingsIntent(this, NotificationChannels.CHANNEL_WORK_ID)
+                            SettingTarget.CHANNEL_BREAK -> ReminderSettingsNavigator.createChannelSettingsIntent(this, NotificationChannels.CHANNEL_BREAK_ID)
+                            SettingTarget.CHANNEL_STATUS -> ReminderSettingsNavigator.createStatusChannelSettingsIntent(this)
                             SettingTarget.NONE -> null
                         }
                         if (targetIntent != null) {
@@ -178,7 +178,6 @@ fun MainAppNavHost(
     val timerState by viewModel.timerState.collectAsStateWithLifecycle()
     val tickElapsed by viewModel.uiTickElapsed
     val permissionEvaluation by viewModel.permissionState
-    val channelStatuses by viewModel.channelStatuses
     val feedback by viewModel.feedback
     val actionMessage by viewModel.actionMessage
     val actionSettingTarget by viewModel.actionSettingTarget
@@ -240,7 +239,6 @@ fun MainAppNavHost(
             ReminderStatusScreen(
                 state = timerState,
                 permissionEvaluation = permissionEvaluation,
-                channelStatuses = channelStatuses,
                 actionFeedback = actionMessage,
                 onTestBreakReminder = { viewModel.testBreakReminder() },
                 onTestWorkReminder = { viewModel.testWorkReminder() },

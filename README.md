@@ -13,7 +13,7 @@
    - 触发时间采用绝对 Wall Clock (`System.currentTimeMillis() + remainingMs`)，内部倒计时与差值计算严格基于单调开机时钟 `SystemClock.elapsedRealtime()`。
 
 2. **Wear OS Ongoing Activity 表盘小图标集成与安全导航**
-   - 原生集成 `androidx.wear:wear-ongoing:1.1.0`，在计时运行与暂停期间，在状态常驻通知上挂载 `OngoingActivity`。
+   - 原生集成 `androidx.wear:wear-ongoing:1.1.0`，在计时运行期间，在状态常驻通知上挂载 `OngoingActivity`。
    - 在支持 Wear OS Ongoing 规范的表盘（如 Galaxy Watch 7）底部常驻动态小图标。
    - 点击表盘图标触发 `MainActivity.ACTION_OPEN_TIMER`（`singleTop` / `FLAG_ACTIVITY_SINGLE_TOP`），支持初次启动与复用 Activity，真正返回当前计时主界面，绝不重新开始、恢复或重置计时。
    - 在每次阶段切换、对账更新状态通知时始终保留 Ongoing Activity 信息。
@@ -28,13 +28,11 @@
    - 系统事件对账（TIME_SET、PACKAGE_REPLACED）非关机场景严格使用单调 `elapsedRealtime`，避免系统时间微调导致未到期阶段被误判为过期。
    - `NotificationActionReceiver` 彻底不直接操作 `TimerRepository`，所有会话匹配、前置能力校验与状态转移统一步入 `TimerEngine` 串行执行。
 
-5. **系统通知渠道执行原生振动**
-   - 正式提醒全权交由高优先级系统通知渠道 (`NotificationManager.IMPORTANCE_HIGH`)，配置独立的定制硬件振动节奏：
-     - **休息开始** (`break_start_v2`)：`longArrayOf(0, 600, 200, 600, 200, 800)`
-     - **工作开始** (`work_start_v2`)：`longArrayOf(0, 300, 200, 300)`
-     - **计时状态** (`timer_status_v2`)：`IMPORTANCE_LOW`，无声音无振动，常驻状态卡片挂载 Ongoing Activity
-     - **计时异常** (`timer_error_v2`)：独立告警渠道
-   - 杜绝“同时发通知又调手写 Vibrator”的冲突逻辑，遵循 Wear OS 原生通知规范。
+5. **统一能力策略与直接振动提醒**
+   - 正式阶段提交后请求 USAGE_ALARM 振动，并发布正式通知。休息节奏为 `[0, 600, 200, 600, 200, 800]`，工作节奏为 `[0, 300, 200, 300]`。
+   - 手动自检复用振动路径并发布静默测试通知；请求成功仍需佩戴者确认触感。
+   - 诊断、命令前置检查与振动许可共用 `ReminderPolicy`。调度、触感、弹屏分别说明；勿扰限制不伪装成触感就绪。
+   - 系统能力由读取器提供最新快照；实际弹屏仍由操作系统决定。正式通知保留渠道配置，其他设备的叠加触感需单独验证。
 
 6. **单状态机并发防护与幂等性**
    - 所有的 UI 点击、通知动作广播、系统闹钟回调以及重启对账，统一进入 `TimerEngine` 经 `Mutex` 串行处理。
