@@ -10,7 +10,7 @@ enum class FeedbackType {
 
 /** Identifies the operation that owns a message, independently of its wording. */
 enum class FeedbackSource {
-    TIMER, WORK_DURATION, BREAK_DURATION, REMINDER_TEST;
+    TIMER, WORK_DURATION, BREAK_DURATION, REMINDER_TEST, SETTINGS_NAVIGATION;
 
     val isDurationSetting: Boolean
         get() = this == WORK_DURATION || this == BREAK_DURATION

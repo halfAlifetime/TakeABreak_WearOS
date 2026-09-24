@@ -83,7 +83,7 @@ P0 验收：可以明确区分现有行为、已确认缺陷和尚待复现的�
 | `notification/AndroidReminderVibration.kt` | 振动前委托统一策略，保留底层振动 API、节奏和取消行为 |
 | `ui/TimerViewModel.kt`、`ui/ReminderStatusScreen.kt` | 显示同一快照的判断结果，去除页面自行比较 `importance >= 4` 等规则 |
 | `notification/NotificationActionReceiver.kt` | 通知继续使用相同的命令前置策略，会话校验仍在引擎锁内完成 |
-| `alarm/AlarmScheduler.kt`、`TakeABreakApplication.kt` | 复用现有精确闹钟能力查询并组装依赖，避免再次复制系统权限判断 |
+| `alarm/AlarmScheduler.kt`、`alarm/AndroidAlarmScheduler.kt`、`TakeABreakApplication.kt` | 复用现有精确闹钟能力查询并组装依赖，避免再次复制系统权限判断 |
 
 能力快照至少包含：精确闹钟能力、通知总开关与运行时授权、各渠道存在性/重要性/振动开关/分组状态、勿扰状态、振动器可用性及全屏通知授权状态。系统读取失败使用明确的未知或不可用状态，不能默认为已就绪。
 
@@ -398,3 +398,45 @@ $env:PATH = $env:PATH.Replace('"', '')
 - [x] 保留原 174 项测试，新增 7 项反馈生命周期回归，合计 181 项通过。调试 APK 构建成功，Lint 0 错误、34 警告，分类与基线一致；证据为 `app/build/feedback-review/final-validation.log`。
 - [x] README 与 PROGRAM_ANALYSIS 同步反馈所有权、异常处理和验证边界。
 - [ ] 新增设置错误卡片的圆屏外观与交互、系统设置跳转失败提示及真实通知清理异常日志的设备验收；本轮未连接或安装手表。
+
+**17. 停止反馈、设置入口与排程异常修正（2026-09-24，本地完成）**
+
+起点为 `a2c8221`，按用户“核实，修正”执行，未使用子代理。
+
+- [x] 核实延迟停止会清除新反馈，隔离测试在修复前断言失败；证据为 `app/build/principles-review-20260924/reproduction.log`。
+- [x] 停止成功仅清理命令发起前关联的 TIMER 反馈 ID，保留较新的同来源反馈和自检反馈。
+- [x] 统一设置目标映射、Intent 构建与启动；普通异常返回失败并记录日志，取消异常继续传播。各页使用同一回调，失败提示由导航宿主在当前页面上方展示。
+- [x] Android 排程异常交给 TimerSystemEffects 统一处理，备用排程失败时保留首次安全异常；沿用既有调度故障状态与补偿路径。
+- [x] 新增 9 项正式回归，保留原 181 项，190 项全部通过；APK 构建成功，Lint 0 错误、34 条原有警告。完整日志为 `app/build/principles-review-20260924/fix-validation.log`。
+- [x] 同步 README 与 PROGRAM_ANALYSIS，区分注入回调/端口验证与真实平台验证。
+- [ ] 本轮改动的设置跳转、失败弹窗圆屏显示和真实排程异常设备验收；本轮未连接或安装手表。
+
+**18. 格式化复用与闹钟文件拆分（2026-09-24，本地完成）**
+
+按用户“核实，修正”完成两处结构整理，未使用子代理。
+
+- [x] TimerScreen 改为调用 TimerState.formattedRemainingTime，删除重复的剩余时间取整和文本格式化，沿用原有显示规则。
+- [x] AlarmScheduler.kt 仅保留系统端口接口，Android 实现移入 AndroidAlarmScheduler.kt。包名、接口签名与依赖组装保持兼容，类正文移动前后 SHA-256 一致。
+- [x] 沿用全部 190 项测试，0 失败、0 错误、0 跳过；调试 APK 构建成功，Lint 0 错误、34 条既有警告，分类一致。日志为 `app/build/principles-review-20260924/structure-validation.log`，未为简单复用和文件搬移新增镜像测试。
+- [x] README 与 PROGRAM_ANALYSIS 同步文件职责及验证结果。本轮仅完成本地验证，未连接或安装手表。
+
+**19. 取消传播与恢复保存失败修正（2026-09-24，本地完成）**
+
+按用户“核实，修正”执行，保留此前未提交改动，未使用子代理。
+
+- [x] 核实三个隔离失败用例，证据为 `app/build/principles-review-20260924-2/reproduction.log`。
+- [x] ViewModel 的计时命令共用异常转换，CancellationException 从异常或 Result 中继续传播；等待锁取消和提交后取消均不生成错误反馈。
+- [x] 系统恢复的两个分支共用存储故障处理，保留正确的重试阶段/剩余时间、原始原因日志与一次故障快照补偿写入，取消继续传播。
+- [x] 新增 ViewModel 取消回归 4 项、恢复失败回归 5 项；保留全部原测试，合计 199 项通过。APK 构建成功，Lint 0 错误、34 条既有警告，分类一致；日志为 `app/build/principles-review-20260924-2/fix-validation.log`。
+- [x] 分别验证补偿写入成功后的故障重建、持续写入失败后的再次系统对账；README 与 PROGRAM_ANALYSIS 明确区分持久化成功和仅进程内有效的边界。
+- [ ] 当前源码的真机验收；本轮未连接或安装手表。
+
+**20. 通知结束时间时区修正（2026-09-24，本地完成）**
+
+按用户“核实，修正”执行，保留此前未提交改动，未使用子代理。
+
+- [x] 核实旧格式化器保留创建时的时区，既有系统时区广播会重新发布通知；复现日志为 `app/build/principles-review-20260924-3/timezone-reproduction.log`。
+- [x] 移除通知实例长期持有的格式化器，通知模块通过 formatNotificationDeadline 在每次调用时读取当前显示环境，保留原有格式及占位规则。
+- [x] 新增 2 项正式回归，覆盖同进程连续时区切换、跨日显示和无效截止时间；保留原 199 项测试，201 项全部通过。APK 构建成功，Lint 0 错误、34 条既有警告，分类一致；日志为 `app/build/principles-review-20260924-3/fix-validation.log`。
+- [x] README 与 PROGRAM_ANALYSIS 同步通知格式化职责和验证范围。
+- [ ] 手表实际切换时区后的通知显示验收；本轮未连接或安装手表。

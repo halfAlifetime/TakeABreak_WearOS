@@ -28,11 +28,7 @@ fun TimerScreen(
 ) {
     var showStopConfirmDialog by remember { mutableStateOf(false) }
 
-    val remainingMs = state.calculateRemainingMs(tickElapsed)
-    val remainingSec = (remainingMs + 999L) / 1000L
-    val timeMinutes = remainingSec / 60
-    val timeSeconds = remainingSec % 60
-    val timeString = "%02d:%02d".format(timeMinutes, timeSeconds)
+    val timeString = state.formattedRemainingTime(tickElapsed)
 
     val isFocus = state.phase == TimerPhase.WORK
 
@@ -76,7 +72,7 @@ fun TimerScreen(
         }
 
         feedback?.let {
-            TimerFeedbackDialog(it, onClearFeedback, onOpenSettingTarget)
+            ActionFeedbackDialog(it, onClearFeedback, onOpenSettingTarget)
         }
 
         // 停止确认弹窗 (全中文极简)

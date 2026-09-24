@@ -18,9 +18,6 @@ import com.takeabreak.wearos.timer.TimerPhase
 import com.takeabreak.wearos.timer.TimerState
 import com.takeabreak.wearos.timer.TimerStatus
 import kotlinx.coroutines.CancellationException
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 class AndroidReminderNotifier(
     private val context: Context,
@@ -38,7 +35,6 @@ class AndroidReminderNotifier(
     private val notificationManager =
         context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
 
-    private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     private val vibration = AndroidReminderVibration(context, capabilityReader)
 
     private fun canUseFullScreenIntent(): Boolean =
@@ -67,9 +63,7 @@ class AndroidReminderNotifier(
 
         val content = when (state.status) {
             TimerStatus.RUNNING -> {
-                val endTimeStr = if (state.deadlineWallClockMs > 0L) {
-                    timeFormat.format(Date(state.deadlineWallClockMs))
-                } else "--:--"
+                val endTimeStr = formatNotificationDeadline(state.deadlineWallClockMs)
                 "预计 $endTimeStr 结束"
             }
             TimerStatus.PAUSED -> "已暂停 · 剩余 ${state.formattedRemainingTime(0L)}"

@@ -1,6 +1,38 @@
 休息一下 Wear OS 原生程序分析与修复记录
 
-**2026-09-23 反馈与通知清理复核（当前源码）**
+**2026-09-24 通知结束时间时区修正（当前源码）**
+
+核实 AndroidReminderNotifier 长期持有 SimpleDateFormat，进程未重建时切换默认时区仍使用旧时区。JVM 隔离验证从 UTC 切到 UTC+8 后，旧格式化器显示 12:00，当前本地时间应为 20:00；证据为 `app/build/principles-review-20260924-3/timezone-reproduction.log`。
+
+- 通知截止时间文本集中到 NotificationTimeFormatter.kt 的 formatNotificationDeadline。每次调用读取当前时区和语言，使用局部格式化器；也可通过参数显式指定环境。保留 HH:mm 格式与无效截止时间的 `--:--` 占位。
+- AndroidReminderNotifier 调用该函数，既有 TIMEZONE_CHANGED 广播、系统对账和通知发布路径保持兼容。没有修改计时状态、截止时间计算、闹钟排程或振动。
+- 保留原 199 项测试，新增连续时区切换及占位规则 2 项，合计 201 项通过，0 失败、0 错误、0 跳过。调试 APK 构建成功，Lint 0 错误、34 条原有警告，分类一致；日志为 `app/build/principles-review-20260924-3/fix-validation.log`。
+
+由单一代理完成，未使用子代理。本轮为源码核查和本地 JVM 回归，未连接或安装手表，也未将历史真机结果当作时区切换验收。
+
+**2026-09-24 取消传播与恢复保存失败修正（前轮记录）**
+
+核实并修正前轮审查中的两处问题，未使用子代理。修复前三个隔离用例分别复现取消覆盖新反馈、已提交启动产生错误提示，以及到期恢复写入失败仍返回普通 PAUSED；证据为 `app/build/principles-review-20260924-2/reproduction.log`。
+
+- ViewModel 的六处异常转换统一到 runTimerCommand，覆盖七种公开计时操作。只转换普通异常；直接抛出或 Result 携带的 CancellationException 继续传播，取消不会被显示为保存失败。引擎原有 Mutex 与 NonCancellable 提交边界不变。
+- 系统恢复的未到期和已到期路径共用 handleRecoverySaveFailure：发布 ERROR / STORAGE_WRITE，清除截止时间、保留正确的重试进度，记录原始异常及会话/代次，并尝试一次故障快照补偿保存。到期分支剩余时间为 0，显式重试进入下一阶段；存储故障不会因精确闹钟权限事件自动重试。
+- 保留原 190 项测试，新增 ViewModel 取消回归 4 项、恢复失败回归 5 项，合计 199 项通过，0 失败、0 错误、0 跳过。调试 APK 构建成功，Lint 0 错误、34 条原有警告，分类一致；日志为 `app/build/principles-review-20260924-2/fix-validation.log`。跨调度器取消测试验证异常类型、原因链和有效状态，允许协程附加堆栈包装。
+
+重建边界：补偿写入成功时，故障快照可在重建后保留并等待显式重试。所有写入持续失败时，进程内 ERROR 不能替换旧的持久化 RUNNING；已验证后续系统事件会再次对账，但没有承诺仅重新打开应用即可恢复未落盘故障。回归使用 Fake 仓库和重建引擎验证，本轮未连接或安装手表。
+
+**2026-09-24 反馈边界修正与结构整理（前轮记录）**
+
+在 `a2c8221` 基线上核实三处问题并修正，未使用子代理。停止反馈竞态在隔离测试中复现：停止先发布 STOPPED、保存延迟期间产生新自检提示，停止返回后提示变成 null。证据为 `app/build/principles-review-20260924/reproduction.log`。
+
+- 停止命令在等待前记录原有 TIMER 反馈 ID；成功后只消费该 ID，保留等待期间的新计时提示、新自检提示和发起前已有的自检提示。业务停止事务顺序不变。
+- 系统设置的目标映射、Intent 构建与启动集中到 `ReminderSettingsNavigator.open`。普通异常记录目标和堆栈并返回失败；取消异常继续传播。Activity 提供显式回调，ViewModel 统一生成 SETTINGS_NAVIGATION 反馈，导航宿主在当前页面上方使用共用 ActionFeedbackDialog 展示，三个入口均可看到失败结果。
+- AndroidAlarmScheduler 不再将意外排程异常转换为无原因的 false；异常交给 TimerSystemEffects 记录原始原因、会话与代次，继续使用引擎原有调度故障分支。AlarmClock 安全异常后的备用排程若也失败，将首次异常作为 suppressed exception 保留。入口检查发现的不可调度条件仍返回 false。
+- 后续核实两处结构问题：TimerScreen 重复实现了已有的时间格式化规则，现改为调用 TimerState.formattedRemainingTime；AlarmScheduler 接口与 AndroidAlarmScheduler 分入同名文件。包名和接口签名不变，Android 实现类正文的移动前后 SHA-256 一致。
+- 保留原 181 项测试，新增停止反馈 3 项、设置结果与取消 4 项、系统日志与取消传播 2 项；结构整理后仍为 190 项通过，0 失败、0 错误、0 跳过。调试 APK 构建成功，Lint 0 错误、34 条原有警告，分类一致；当轮日志为 `app/build/principles-review-20260924/structure-validation.log`，此前反馈修正日志保留在同目录的 `fix-validation.log`。
+
+本轮仅做本地验证，未连接或安装手表。设置测试注入回调结果，系统日志测试使用 Fake 端口；真实设置页面、失败弹窗的圆屏显示，以及 Android 排程备用分支的实际系统异常尚未真机验证。下文真机记录仍对应历史版本。
+
+**2026-09-23 反馈与通知清理历史修正（a2c8221）**
 
 在 `7320ac9` 基线上核实并修正了设置页未展示保存错误、成功保存遗留旧提示、设置跳转失败被旧关闭动作清除，以及通知清理异常无日志的问题。由单一代理完成，未使用子代理。
 

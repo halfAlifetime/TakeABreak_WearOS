@@ -19,14 +19,13 @@ import androidx.core.content.ContextCompat
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
-import com.takeabreak.wearos.notification.NotificationChannels
 import com.takeabreak.wearos.permission.ReminderSettingsNavigator
 import com.takeabreak.wearos.permission.SettingTarget
 import com.takeabreak.wearos.ui.ReminderStatusScreen
 import com.takeabreak.wearos.ui.SettingsScreen
 import com.takeabreak.wearos.ui.TimerScreen
 import com.takeabreak.wearos.ui.TimerLoadingScreen
-import com.takeabreak.wearos.ui.FeedbackType
+import com.takeabreak.wearos.ui.ActionFeedbackDialog
 import com.takeabreak.wearos.ui.FeedbackSource
 import com.takeabreak.wearos.ui.TimerViewModel
 import com.takeabreak.wearos.ui.theme.TakeABreakTheme
@@ -91,30 +90,7 @@ class MainActivity : ComponentActivity() {
                 MainAppNavHost(
                     viewModel = viewModel,
                     onClearKeepScreenOn = { clearKeepScreenOn() },
-                    onOpenNotificationSettings = {
-                        val intent = ReminderSettingsNavigator.createAppNotificationSettingsIntent(this)
-                        runCatching { startActivity(intent) }
-                    },
-                    onOpenExactAlarmSettings = {
-                        val intent = ReminderSettingsNavigator.createExactAlarmSettingsIntent(this)
-                        runCatching { startActivity(intent) }
-                    },
-                    onOpenSettingTarget = { target ->
-                        val targetIntent = when (target) {
-                            SettingTarget.EXACT_ALARM -> ReminderSettingsNavigator.createExactAlarmSettingsIntent(this)
-                            SettingTarget.APP_NOTIFICATION -> ReminderSettingsNavigator.createAppNotificationSettingsIntent(this)
-                            SettingTarget.CHANNEL_WORK -> ReminderSettingsNavigator.createChannelSettingsIntent(this, NotificationChannels.CHANNEL_WORK_ID)
-                            SettingTarget.CHANNEL_BREAK -> ReminderSettingsNavigator.createChannelSettingsIntent(this, NotificationChannels.CHANNEL_BREAK_ID)
-                            SettingTarget.CHANNEL_STATUS -> ReminderSettingsNavigator.createStatusChannelSettingsIntent(this)
-                            SettingTarget.NONE -> null
-                        }
-                        if (targetIntent != null) {
-                            val opened = runCatching { startActivity(targetIntent) }.isSuccess
-                            if (!opened) {
-                                viewModel.showFeedback("无法直达该设置页，请在手表【设置 -> 应用 -> 休息一下】中手动调整", FeedbackType.INFO)
-                            }
-                        }
-                    }
+                    openSystemSetting = { target -> ReminderSettingsNavigator.open(this, target) }
                 )
             }
         }
@@ -172,9 +148,7 @@ class MainActivity : ComponentActivity() {
 fun MainAppNavHost(
     viewModel: TimerViewModel,
     onClearKeepScreenOn: () -> Unit,
-    onOpenNotificationSettings: () -> Unit,
-    onOpenExactAlarmSettings: () -> Unit,
-    onOpenSettingTarget: (SettingTarget) -> Unit
+    openSystemSetting: (SettingTarget) -> Result<Unit>
 ) {
     val navController = rememberSwipeDismissableNavController()
     val timerState by viewModel.timerState.collectAsStateWithLifecycle()
@@ -182,6 +156,9 @@ fun MainAppNavHost(
     val permissionEvaluation by viewModel.permissionState
     val feedback by viewModel.feedback
     val navCommand by viewModel.navigationCommand
+    val onOpenSettingTarget: (SettingTarget) -> Unit = { target ->
+        viewModel.openSystemSetting(target, openSystemSetting)
+    }
 
     // 监听导航命令（例如表盘小图标、常驻通知点击触发的返回 timer 页面意图）
     // 只导航，不重新开始、恢复或重置计时
@@ -235,8 +212,7 @@ fun MainAppNavHost(
                 onSetWorkDuration = { min -> viewModel.setWorkDuration(min) },
                 onSetBreakDuration = { min -> viewModel.setBreakDuration(min) },
                 onOpenReminderStatus = { navController.navigate("reminder_status") },
-                onOpenSystemNotificationSettings = onOpenNotificationSettings,
-                onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+                onOpenSystemNotificationSettings = { onOpenSettingTarget(SettingTarget.APP_NOTIFICATION) },
                 onBack = { navController.popBackStack() }
             )
         }
@@ -248,10 +224,16 @@ fun MainAppNavHost(
                 feedback = feedback?.takeIf { it.source == FeedbackSource.REMINDER_TEST },
                 onTestBreakReminder = { viewModel.testBreakReminder() },
                 onTestWorkReminder = { viewModel.testWorkReminder() },
-                onOpenExactAlarmSettings = onOpenExactAlarmSettings,
-                onOpenSystemNotificationSettings = onOpenNotificationSettings,
+                onOpenExactAlarmSettings = { onOpenSettingTarget(SettingTarget.EXACT_ALARM) },
+                onOpenSystemNotificationSettings = { onOpenSettingTarget(SettingTarget.APP_NOTIFICATION) },
                 onBack = { navController.popBackStack() }
             )
         }
+    }
+
+    // Settings can be opened from three pages. Show launch failures above the current
+    // destination so route-specific feedback filtering cannot hide them.
+    feedback?.takeIf { it.source == FeedbackSource.SETTINGS_NAVIGATION }?.let {
+        ActionFeedbackDialog(it, viewModel::clearFeedback, onOpenSettingTarget)
     }
 }

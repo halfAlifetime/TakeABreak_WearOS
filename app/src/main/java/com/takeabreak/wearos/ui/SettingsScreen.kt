@@ -47,7 +47,6 @@ fun SettingsScreen(
     onSetBreakDuration: (Int) -> Unit,
     onOpenReminderStatus: () -> Unit,
     onOpenSystemNotificationSettings: () -> Unit,
-    onOpenExactAlarmSettings: () -> Unit,
     onBack: () -> Unit
 ) {
     val listState = rememberScalingLazyListState()

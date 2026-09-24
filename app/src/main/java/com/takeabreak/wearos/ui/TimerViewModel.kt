@@ -15,6 +15,7 @@ import com.takeabreak.wearos.permission.SettingTarget
 import com.takeabreak.wearos.timer.TimerEngine
 import com.takeabreak.wearos.timer.TimerPhase
 import com.takeabreak.wearos.timer.TimerState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
@@ -119,8 +120,30 @@ class TimerViewModel(
         source = source
     )
 
-    fun showFeedback(message: String, type: FeedbackType = FeedbackType.INFO, target: SettingTarget = SettingTarget.NONE) {
-        _feedback.value = newFeedback(message, type, target)
+    fun showFeedback(
+        message: String,
+        type: FeedbackType = FeedbackType.INFO,
+        target: SettingTarget = SettingTarget.NONE,
+        source: FeedbackSource = FeedbackSource.TIMER
+    ) {
+        _feedback.value = newFeedback(message, type, target, source)
+    }
+
+    /** The activity supplies the platform opener; navigation failure is visible on any app page. */
+    fun openSystemSetting(target: SettingTarget, open: (SettingTarget) -> Result<Unit>) {
+        if (target == SettingTarget.NONE) return
+        val previousFeedbackId = _feedback.value
+            ?.takeIf { it.source == FeedbackSource.SETTINGS_NAVIGATION }?.id
+        val result = open(target)
+        if (result.isFailure) {
+            showFeedback(
+                message = "无法打开设置，请在手表系统设置中手动调整。",
+                type = FeedbackType.ERROR,
+                source = FeedbackSource.SETTINGS_NAVIGATION
+            )
+        } else {
+            previousFeedbackId?.let(::clearFeedback)
+        }
     }
 
     private fun performPreflightCheck(): Boolean {
@@ -136,10 +159,20 @@ class TimerViewModel(
         return decision.allowed
     }
 
+    // Cancellation can arrive after the engine's non-cancellable commit succeeds.
+    // Preserve it as cancellation, including when a command returns it in Result.
+    private suspend fun <T> runTimerCommand(command: suspend () -> Result<T>): Result<T> = try {
+        Result.success(command().getOrThrow())
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Exception) {
+        Result.failure(error)
+    }
+
     fun startTimer(): Job = viewModelScope.launch {
         if (timerState.value == null) return@launch
         if (!performPreflightCheck()) return@launch
-        val result = runCatching { timerEngine.start() }.getOrElse { Result.failure(it) }
+        val result = runTimerCommand { timerEngine.start() }
         if (result.isFailure) {
             _feedback.value = newFeedback(
                 message = result.exceptionOrNull()?.message ?: "启动失败",
@@ -151,7 +184,7 @@ class TimerViewModel(
 
     fun pauseTimer(): Job = viewModelScope.launch {
         if (timerState.value == null) return@launch
-        val result = runCatching { timerEngine.pause() }.getOrElse { Result.failure(it) }
+        val result = runTimerCommand { timerEngine.pause() }
         if (result.isFailure) {
             _feedback.value = newFeedback(
                 message = result.exceptionOrNull()?.message ?: "暂停保存失败",
@@ -164,7 +197,7 @@ class TimerViewModel(
     fun resumeTimer(): Job = viewModelScope.launch {
         if (timerState.value == null) return@launch
         if (!performPreflightCheck()) return@launch
-        val result = runCatching { timerEngine.resume() }.getOrElse { Result.failure(it) }
+        val result = runTimerCommand { timerEngine.resume() }
         if (result.isFailure) {
             _feedback.value = newFeedback(
                 message = result.exceptionOrNull()?.message ?: "恢复失败",
@@ -177,7 +210,7 @@ class TimerViewModel(
     fun retryTimer(): Job = viewModelScope.launch {
         if (timerState.value == null) return@launch
         if (!performPreflightCheck()) return@launch
-        val result = runCatching { timerEngine.retry() }.getOrElse { Result.failure(it) }
+        val result = runTimerCommand { timerEngine.retry() }
         if (result.isFailure) {
             _feedback.value = newFeedback(
                 message = result.exceptionOrNull()?.message ?: "重试失败",
@@ -195,7 +228,10 @@ class TimerViewModel(
 
     fun stopTimer(): Job = viewModelScope.launch {
         if (timerState.value == null) return@launch
-        val result = runCatching { timerEngine.stop() }.getOrElse { Result.failure(it) }
+        // STOPPED is published before storage completes, so the user may already be
+        // on another page by the time this command returns. Consume only its old feedback.
+        val previousFeedbackId = _feedback.value?.takeIf { it.source == FeedbackSource.TIMER }?.id
+        val result = runTimerCommand { timerEngine.stop() }
         if (result.isFailure) {
             _feedback.value = newFeedback(
                 message = result.exceptionOrNull()?.message ?: "停止保存失败",
@@ -203,7 +239,7 @@ class TimerViewModel(
                 settingTarget = SettingTarget.NONE
             )
         } else {
-            _feedback.value = null
+            previousFeedbackId?.let(::clearFeedback)
         }
     }
 
@@ -223,7 +259,7 @@ class TimerViewModel(
         update: suspend () -> Result<Unit>
     ): Job = viewModelScope.launch {
         if (timerState.value == null) return@launch
-        val result = runCatching { update() }.getOrElse { Result.failure(it) }
+        val result = runTimerCommand(update)
         if (result.isFailure) {
             _feedback.value = newFeedback(
                 message = "$label 未保存：${result.exceptionOrNull()?.message ?: "请重试"}",

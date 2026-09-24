@@ -17,6 +17,8 @@ import kotlinx.coroutines.sync.withLock
 import java.io.IOException
 import java.util.Collections
 import java.util.UUID
+import java.util.logging.Level
+import java.util.logging.Logger
 
 class TimerEngine(
     private val repository: TimerRepository,
@@ -27,6 +29,7 @@ class TimerEngine(
 ) {
     private val mutex = Mutex()
     private val effects = TimerSystemEffects(scheduler, notifier)
+    private val logger = Logger.getLogger(TimerEngine::class.java.name)
 
     // 内存中的权威有效状态：当持久化层发生异常或延迟时，该状态作为同进程内的绝对基准
     @Volatile private var inMemoryEffectiveState: TimerState? = null
@@ -799,27 +802,13 @@ class TimerEngine(
             val scheduled = effects.schedulePhaseAlarm(reconciledState, previousGeneration = current.generation)
             if (scheduled) {
                 val saveResult = safeUpdateStateWithRetry(maxAttempts = 2) { reconciledState }
-                if (saveResult.isSuccess) {
-                    val saved = saveResult.getOrThrow()
-                    updateEffectiveState(saved)
-                    effects.showStatusNotification(saved)
-                    return@mutate saved
-                } else {
+                val saved = saveResult.getOrElse { cause ->
                     effects.cancelPhaseAlarm(nextGeneration)
-                    val errorState = reconciledState.copy(
-                        status = TimerStatus.ERROR,
-                        failureReason = TimerFailure.STORAGE_WRITE,
-                        pausedRemainingMs = remainingMs,
-                        deadlineElapsedRealtimeMs = 0L,
-                        deadlineWallClockMs = 0L,
-                        errorMessage = "存储故障，计时已中断",
-                        lastEventResult = "对账落盘失败"
-                    )
-                    updateEffectiveState(errorState)
-                    runCatching { repository.updateTimerState { errorState } }
-                    effects.showStatusNotification(errorState)
-                    return@mutate errorState
+                    return@mutate handleRecoverySaveFailure(reconciledState, remainingMs, cause)
                 }
+                updateEffectiveState(saved)
+                effects.showStatusNotification(saved)
+                return@mutate saved
             } else {
                 effects.cancelPhaseAlarm(nextGeneration)
                 val errorState = reconciledState.copy(
@@ -854,10 +843,40 @@ class TimerEngine(
                 errorMessage = null
             )
             val saveResult = safeUpdateStateWithRetry(maxAttempts = 2) { expiredState }
-            val finalState = if (saveResult.isSuccess) saveResult.getOrThrow() else expiredState
-            updateEffectiveState(finalState)
-            effects.showStatusNotification(finalState)
-            return@mutate finalState
+            val saved = saveResult.getOrElse { cause ->
+                return@mutate handleRecoverySaveFailure(expiredState, 0L, cause)
+            }
+            updateEffectiveState(saved)
+            effects.showStatusNotification(saved)
+            return@mutate saved
         }
+    }
+
+    /** Both recovery paths preserve retry progress and report a failed commit as a fault. */
+    private suspend fun handleRecoverySaveFailure(
+        attemptedState: TimerState,
+        remainingMs: Long,
+        cause: Throwable
+    ): TimerState {
+        val errorState = attemptedState.copy(
+            status = TimerStatus.ERROR,
+            failureReason = TimerFailure.STORAGE_WRITE,
+            pausedRemainingMs = remainingMs,
+            deadlineElapsedRealtimeMs = 0L,
+            deadlineWallClockMs = 0L,
+            errorMessage = "存储故障，计时已中断",
+            lastEventResult = "对账落盘失败"
+        )
+        updateEffectiveState(errorState)
+        val context = "session=${errorState.sessionId} generation=${errorState.generation}"
+        logger.log(Level.WARNING, "Failed to persist timer recovery: $context", cause)
+        // Best effort only: persistent write failure cannot make this in-memory fault
+        // survive process death. Never claim the old stored RUNNING snapshot was replaced.
+        val fallbackSave = safeUpdateStateWithRetry(maxAttempts = 1) { errorState }
+        fallbackSave.exceptionOrNull()?.let {
+            logger.log(Level.WARNING, "Failed to persist recovery fault: $context", it)
+        }
+        effects.showStatusNotification(errorState)
+        return errorState
     }
 }

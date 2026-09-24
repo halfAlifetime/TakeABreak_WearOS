@@ -34,7 +34,7 @@ import com.takeabreak.wearos.ui.theme.TextSecondary
 import com.takeabreak.wearos.ui.theme.WarningRed
 
 @Composable
-internal fun TimerFeedbackDialog(
+internal fun ActionFeedbackDialog(
     feedback: ActionFeedback,
     onDismiss: (Long) -> Unit,
     onOpenSettingTarget: (SettingTarget) -> Unit
